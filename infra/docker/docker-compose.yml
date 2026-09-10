@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudsuite-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - /opt/cloudsuite/data/postgres:/var/lib/postgresql/data
+    networks:
+      - cloudsuite-net
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 1g
+    cpus: 1.5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cloudsuite-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - /opt/cloudsuite/data/redis:/data
+    networks:
+      - cloudsuite-net
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 512m
+    cpus: 0.5
+
+  nginx:
+    image: nginx:alpine
+    container_name: cloudsuite-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/cloudsuite/infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - /opt/cloudsuite/infra/nginx/certs:/etc/nginx/certs:ro
+      - /opt/cloudsuite/logs/nginx:/var/log/nginx
+    networks:
+      - cloudsuite-net
+    mem_limit: 256m
+    cpus: 0.5
+
+networks:
+  cloudsuite-net:
+    external: true
