@@ -1,0 +1,9 @@
+# Odoo ERP custom image (CloudSuite staging) -- Sprint 0.9 revisi
+# Base 18.0 (sesuai compose) + OCA auth_oidc untuk OIDC authorization-code flow.
+FROM odoo:18.0
+
+USER root
+RUN pip install --no-cache-dir --break-system-packages \
+        python-jose \
+        odoo-addon-auth-oidc==18.0.1.1.0.2
+USER odoo

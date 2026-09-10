@@ -159,6 +159,40 @@ services:
       retries: 3
       start_period: 60s
 
+  odoo:
+    build:
+      context: /opt/cloudsuite/infra/docker
+      dockerfile: Dockerfile.odoo
+    image: cloudsuite-odoo:18.0
+    container_name: cloudsuite-odoo
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HOST: postgres
+      PORT: "5432"
+      USER: ${ODOO_DB_USER}
+      PASSWORD: ${ODOO_DB_PASSWORD}
+      TZ: ${TZ}
+    command: odoo --proxy-mode --without-demo=all
+    volumes:
+      - /opt/cloudsuite/data/odoo/filestore:/var/lib/odoo
+      - /opt/cloudsuite/data/odoo/config:/etc/odoo
+    networks:
+      - cloudsuite-net
+    expose:
+      - "8069"
+      - "8072"
+    mem_limit: 2.5g
+    cpus: 2
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8069/web/login || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
   nginx:
     image: nginx:alpine
     container_name: cloudsuite-nginx

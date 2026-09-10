@@ -101,3 +101,12 @@ Jangan hapus baris ini saat edit compose.
 - Buat provider OAuth2 via API: POST /api/v3/providers/oauth2/ WAJIB sertakan authorization_flow + invalidation_flow + signing_key + grant_types (tanpa invalidation_flow -> HTTP:400).
 - Nextcloud ncadmin = break-glass only (akun darurat, JANGAN dipakai user biasa; login normal via SSO). Detail: docs/nextcloud-notes.md (disable via occ user:disable ncadmin, enable balik via occ user:enable ncadmin). Status 2026-09-10: AKTIF, keputusan disable menunggu persetujuan.
 - Sprint 0.8b (2026-09-10): healthcheck nextcloud (curl -f http://localhost/status.php, interval 30s) -- docker compose ps nextcloud (healthy). Token hermes-automation expiry 2026-12-09 (format YYYY-MM-DD; laporan 0.8 memakai DD/MM 12/09/2026 = 9 Desember 2026).
+
+## Sprint 0.9 Odoo 18 + SSO OIDC (2026-09-10)
+- Odoo: image cloudsuite-odoo:18.0 (FROM odoo:18.0 + python-jose + odoo-addon-auth-oidc==18.0.1.1.0.2), container cloudsuite-odoo, URL https://erp.idchsuite.my.id, DB odoo OWNER cloudsuite.
+- odoo.conf: 11 baris, list_db=False, dbfilter=^odoo\$ (fix database selector), owner 100:101 mode 600, live di /opt/cloudsuite/data/odoo/config/odoo.conf; repo hanya odoo.conf.example (password=CHANGE_ME).
+- Authentik provider Odoo pk=3, client_id RAfdMHBRIePsrqb2LYBD6NsHYUEbZ8cQlXBJoqES, grant authorization_code+refresh_token, redirect strict https://erp.idchsuite.my.id/auth_oauth/signin.
+- Authentik app slug=odoo PROVIDER pk=3.
+- OAuth provider Odoo id=6 CloudSuite flow=id_token_code enabled, scope openid email profile, auth/token/jwks endpoint Authentik.
+- SSO: /web/login langsung form (tanpa selector), tombol Login with CloudSuite -> redirect Authentik default-authentication-flow 200, tanpa error Odoo. Login manual akadmin menunggu admin.
+- Selector: /web/database/selector manager disabled, tidak bocor list DB (authentik/cloudsuite/nextcloud count 0).
