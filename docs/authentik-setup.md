@@ -126,3 +126,4 @@ Jangan hapus baris ini saat edit compose.
 - User SSO existing id=6 dihapus (DELETE OK, verify count=0) agar re-login akadmin create fresh dari template baru.
 - API token hermes-automation: users/me 200 OK, create user testsso pk=7 OK, set_password 403 (scope read, wajar — bukan blocker). Hapus-buat user test via API butuh token scope lebih.
 - Prosedur test SSO user baru: hapus record user Odoo (unlink aman, tidak hapus user Authentik), re-login via Login with CloudSuite.
+- HASIL TEST 2026-09-10: admin re-login SSO sebagai akadmin (user lama id=6 sudah dihapus) -> user baru id=9 auto-create share=False groups=[Internal User, Technical Features] action_id=109, masuk Discuss/dashboard TANPA stuck /web/login_successful. Template cloudsuite_template TERBUKTI berfungsi.
