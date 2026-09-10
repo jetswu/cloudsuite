@@ -27,7 +27,12 @@ services:
     image: redis:7-alpine
     container_name: cloudsuite-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: >
+      sh -c 'exec redis-server
+      --requirepass "$$REDIS_PASSWORD"
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru'
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
