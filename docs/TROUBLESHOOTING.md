@@ -501,3 +501,15 @@ Cek issuer actual dari Authentik sebelum setup Stalwart OIDC Directory:
 curl -s https://auth.idchsuite.my.id/application/o/<slug>/.well-known/openid-configuration | jq -r .issuer
 ```
 Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
+
+## XX. Bulwark SSO — claim missing (sub_mode / scope mapping)
+- Gejala: Authentication Failed setelah SSO callback, issuerUrl sudah benar
+- Root cause 1:  — Authentik tidak include  claim
+- Root cause 2:  — default scope mappings tidak di-link ke provider
+- Fix: ubah  → , assign  ke [openid, email, profile] mappings
+- Authentik default scope mapping PKs (v0.10b):
+  - : 259862ec-1205-4cc7-b684-f13804e28245
+  - : 01ac3ee6-8b88-4e91-9a38-268192b9abed
+  - : c92ccc80-eee8-4b74-b0cb-ae956cd848ac
+- Pencegahan: setelah recreate Authentik, re-assign property_mappings ke OAuth2 provider
+

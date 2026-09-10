@@ -106,3 +106,14 @@ Cara cek issuer yang benar:
 ```bash
 curl -s https://auth.idchsuite.my.id/application/o/stalwart-mail/.well-known/openid-configuration | jq -r .issuer
 ```
+
+## OIDC issuerUrl trailing slash (fix3)
+Stalwart OIDC Directory  **HARUS pakai trailing slash** supaya match Authentik actual issuer. Bulwark env  **TANPA trailing slash**. Beda karena cara masing-masing library handle URL normalization.
+
+Authentik actual issuer:  (WITH trailing slash).
+
+## Authentik sub_mode & property_mappings (fix4)
+-  =  (NOT ) — supaya Authentik include  claim di ID token
+-  =  scope mappings — supaya claims ,  diinclude
+- Default  tidak include email claim → Stalwart  gagal
+
