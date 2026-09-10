@@ -10,6 +10,7 @@ untuk kebutuhan internal. Di-build sebagai satu stack Docker Compose dengan SSO
 terpusat (Authentik) dan reverse proxy Nginx. Tiap layanan mandiri tapi berbagi
 infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 
+- **PRD:** docs/PRD.md (Final v1.4)
 - **Repo:** git@github.com:jetswu/cloudsuite.git
 - **Environment aktif:** staging (10 vCPU, 20 GB RAM, 100 GB disk)
 - **Prod:** belum ada

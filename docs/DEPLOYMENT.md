@@ -45,7 +45,8 @@ Repo: `git@github.com:jetswu/cloudsuite.git` (branch `main`).
 
 1. Tambahkan A record untuk tiap subdomain web → IP VPS, mode **Proxied**
    (awan oranye):
-   - `portal.idchsuite.my.id` (Portal — Sprint 0.10)
+   - `idchsuite.my.id` (Landing page → redirect portal)
+   - `portal.idchsuite.my.id` (Dashboard CloudSuite — Phase 2)
    - `auth.idchsuite.my.id` (Authentik)
    - `drive.idchsuite.my.id` (Nextcloud)
    - `erp.idchsuite.my.id` (Odoo)
