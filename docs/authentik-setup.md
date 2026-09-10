@@ -75,3 +75,27 @@ Jangan hapus baris ini saat edit compose.
 - `PATCH /api/v3/admin/settings/ {"default_token_duration":"days=90"}` → HTTP:200
 - `POST /api/v3/providers/oauth2/` (dengan `authorization_flow`, `invalidation_flow`, `signing_key`) → HTTP:201 (tanpa `invalidation_flow` → HTTP:400 `This field is required.`)
 - `POST /api/v3/core/applications/ {"slug":"template-cloudsuite-services","provider":1}` → HTTP:201
+
+## Provider Nextcloud (OIDC) -- Sprint 0.8 (2026-09-10)
+
+- Name: Nextcloud, pk 2 (oauth2)
+- Application: Nextcloud, slug nextcloud (Application pk 6748a3a5-0fb6-4c14-9b6d-d08758ec63d6)
+- Client ID: o3AMAxUA1nW5XEZW6cczhmAqYoWNHXU9T3zODp8y (bukan secret -- boleh tampil)
+- Client secret: tersimpan di Nextcloud OCC config (user_oidc provider CloudSuite) -- TIDAK ditulis di dokumen ini.
+- Redirect URI (strict): https://drive.idchsuite.my.id/apps/user_oidc/code
+- Discovery URI: https://auth.idchsuite.my.id/application/o/nextcloud/.well-known/openid-configuration -- HTTP:200
+- Authorization flow: default-provider-authorization-explicit-consent (7f475261-68fa-45de-9226-de2be34014a5)
+- Invalidation flow: default-provider-invalidation-flow (3353607b-6e34-406a-95f6-74ef80852a35)
+- Signing key: bawaan authentik Self-signed Certificate (38b70fc0-69b8-44fa-b959-ad02ca4197da)
+- Subject mode: hashed_user_id, Issuer mode: global, Scopes: openid/email/profile
+- grant_types WAJIB diisi eksplisit via API (authorization_code, hybrid, implicit, client_credentials, password, device_code, refresh_token).
+  API default grant_types kosong -> authorize gagal invalid_request The request is otherwise malformed + log Invalid grant_type for provider (Authentik 2026.8.2, diverifikasi dari source views/authorize.py baris 233).
+- Nextcloud: image nextcloud:34.0.3-apache (stable terbaru 2026-09-10), container cloudsuite-nextcloud, URL https://drive.idchsuite.my.id, status.php installed:true, user_oidc 8.11.0 enabled.
+- SSO test end-to-end (2026-09-10): Login Nextcloud -- redirect Authentik -- login akadmin -- consent Continue -- dashboard Nextcloud sebagai authentik Default Admin OK. User OIDC ter-provision: 307f28ffa44da592bb5ae1730fb58c19c0a26314c5d07c232614f42d79732293.
+- OCC config (user_oidc 8.x): pakai php occ user_oidc:provider NAME dengan flag clientid, clientsecret, discoveryuri, unique-uid=1 (BUKAN config:app:set format lama -- itu membuat provider dengan clientId kosong).
+
+## Catatan operasional
+
+- Reset password akadmin: docker exec -i cloudsuite-authentik-server ak shell lalu set_password() + save() (terbukti PW-SET-OK). Alternatif: printf PASS newline PASS via pipe ke docker exec -i cloudsuite-authentik-server ak changepassword akadmin.
+- AUTHENTIK_BOOTSTRAP_PASSWORD hanya berlaku saat setup awal (first-run). Setelah user ada di DB, reset via ak shell / ak changepassword, BUKAN via env tersebut.
+- Buat provider OAuth2 via API: POST /api/v3/providers/oauth2/ WAJIB sertakan authorization_flow + invalidation_flow + signing_key + grant_types (tanpa invalidation_flow -> HTTP:400).
