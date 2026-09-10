@@ -110,3 +110,10 @@ Jangan hapus baris ini saat edit compose.
 - OAuth provider Odoo id=6 CloudSuite flow=id_token_code enabled, scope openid email profile, auth/token/jwks endpoint Authentik.
 - SSO: /web/login langsung form (tanpa selector), tombol Login with CloudSuite -> redirect Authentik default-authentication-flow 200, tanpa error Odoo. Login manual akadmin menunggu admin.
 - Selector: /web/database/selector manager disabled, tidak bocor list DB (authentik/cloudsuite/nextcloud count 0).
+
+## Sprint 0.9b Home Action Odoo (2026-09-10)
+- Root cause /web/login_successful: semua user (admin + provider_6_user_...) action_id=None.
+- Action: Discuss id=109 (mail.action_discuss); tidak ada dashboard bawaan di DB ini.
+- Set action_id=109 untuk 2 user (admin, provider_6_user_...) COMMIT OK; ir.default res.users action_id=109 DEFAULT SET OK, check default_action_id=109.
+- ir.config_parameter oauth: tidak ada (grep kosong) -> tidak ada redirect param khusus.
+- Restart odoo healthy; curl /web/login 200. Perubahan hanya data DB, tidak ada file config.
