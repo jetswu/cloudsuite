@@ -121,6 +121,38 @@ services:
     mem_limit: 1g
     cpus: 1.0
 
+  nextcloud:
+    image: nextcloud:34.0.3-apache
+    container_name: cloudsuite-nextcloud
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${NEXTCLOUD_DB_NAME}
+      POSTGRES_USER: ${NEXTCLOUD_DB_USER}
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD}
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      NEXTCLOUD_TRUSTED_DOMAINS: drive.idchsuite.my.id
+      TRUSTED_PROXIES: cloudsuite-nginx
+      OVERWRITEPROTOCOL: https
+      OVERWRITECLIURL: https://drive.idchsuite.my.id
+      REDIS_HOST: redis
+      REDIS_HOST_PASSWORD: ${REDIS_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - /opt/cloudsuite/data/nextcloud:/var/www/html
+    networks:
+      - cloudsuite-net
+    expose:
+      - "80"
+    mem_limit: 1.5g
+    cpus: 1
+
   nginx:
     image: nginx:alpine
     container_name: cloudsuite-nginx
