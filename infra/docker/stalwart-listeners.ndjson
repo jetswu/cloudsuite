@@ -1,0 +1,2 @@
+{"@type":"upsert","object":"NetworkListener","matchOn":["name"],"value":{"submission":{"name":"submission","bind":{"[::]:587":true},"protocol":"smtp","useTls":true,"tlsImplicit":false}}}
+{"@type":"upsert","object":"NetworkListener","matchOn":["name"],"value":{"imap":{"name":"imap","bind":{"[::]:143":true},"protocol":"imap","useTls":true,"tlsImplicit":false}}}

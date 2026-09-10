@@ -1,0 +1,1 @@
+{"@type":"create","object":"Task","value":{"task-dns":{"@type":"DnsManagement","domainId":"b","updateRecords":{"dkim":true,"tlsa":true,"spf":true,"mx":true,"dmarc":true,"srv":true,"mtaSts":true,"tlsRpt":true,"caa":true,"autoConfig":true,"autoConfigLegacy":true,"autoDiscover":true},"onSuccessRenewCertificate":false}}}

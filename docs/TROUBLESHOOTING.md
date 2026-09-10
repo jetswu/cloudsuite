@@ -311,3 +311,60 @@
 
 - Pencegahan: jaga endpoint `/health` tetap ada; healthcheck nginx tidak
   butuh dependensi service lain (loopback sendiri).
+
+
+---
+
+## 23. config.json isi Bootstrap -> Stalwart reject (Sprint 0.10a)
+
+- Gejala: config.json berisi "bootstrap": true atau field ACME/certificates ->
+  container restart loop atau gagal start.
+- Penyebab: config.json harusnya DataStore only (data, registry, tracelogging).
+  Field Bootstrap (acme, certificates, system) bukan di config.json.
+- Solusi: reset config.json ke DataStore only:
+  {"data":{"@type":"Local","path":"/var/lib/stalwart","purge":{"@type":"Never"}},
+   "registry":{"@type":"Local","configKey":"STALWART_LICENSE"},
+   "tracelogging":{"@type":"Server"}}
+- Pencegahan: jangan campur Bootstrap + DataStore di satu file.
+
+## 24. Port 587/143 default OFF (Sprint 0.10a)
+
+- Gejala: compose map 587:587 dan 143:143 tapi tidak listening.
+- Penyebab: Stalwart v0.16.21 default listener hanya bind 25, 465, 993, 995
+  (465=smtps implicit, 993=imaps implicit). 587 (submission/STARTTLS) dan
+  143 (imap/STARTTLS) tidak auto-created -- harus apply manual.
+- Solusi: apply NDJSON NetworkListener untuk 587 + 143, lalu restart container
+  (Stalwart tidak hot-reload listener baru).
+- Pencegahan: cek /proc/net/tcp setelah restart untuk konfirmasi binding.
+
+## 25. DKIM stage pending perlu trigger publish (Sprint 0.10a)
+
+- Gejala: DKIM keys sudah generate tapi stage pending -- tidak ada record di DNS.
+- Penyebab: DKIM auto-generate saat server normal (background task), tapi
+  publish ke DNS butuh Task DnsManagement.
+- Solusi: apply Task DnsManagement (lihat docs/stalwart-notes.md).
+  Task hilang dari query setelah selesai (scheduler auto-delete).
+  Cek via Cloudflare API atau dig untuk konfirmasi publish.
+- Pencegahan: set dnsManagement.auto=true di Domain agar auto-publish.
+
+## 26. Duration field harus integer milidetik (Sprint 0.10a)
+
+- Gejala: apply NDJSON gagal dengan error validasi pada field durasi.
+- Penyebab: Stalwart serialisasi durasi sebagai integer milidetik, bukan detik.
+  timeout:30000 = 30 detik, bukan 30.
+- Pencegahan: selalu pakai milidetik: 30000 (30s), 300000 (5m).
+
+## 27. authUsername bukan user (Sprint 0.10a)
+
+- Gejala: apply NDJSON Account gagal -- "unknown field: user".
+- Penyebab: field di Account object bernama authUsername, bukan user (legacy
+  name dari Stalwart versi lama).
+- Pencegahan: describe <Object> sebelum apply untuk cek field names.
+
+## 28. Stalwart admin API tidak bind host 127.0.0.1 di normal mode (Sprint 0.10a)
+
+- Gejala: curl http://127.0.0.1:8080 dari host gagal (connection refused).
+- Penyebab: default HTTP listener bind [::]:8080 di dalam container, tapi
+  admin API hanya bisa diakses via container IP (172.18.0.9:8080).
+- Solusi: gunakan container IP atau docker exec curl localhost:8080.
+- Pencegahan: catat container IP di dokumentasi deployment.

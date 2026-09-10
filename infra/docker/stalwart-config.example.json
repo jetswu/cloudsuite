@@ -1,0 +1,11 @@
+{
+  "@type": "PostgreSql",
+  "host": "postgres",
+  "port": 5432,
+  "database": "stalwart",
+  "authUsername": "cloudsuite",
+  "authSecret": {
+    "@type": "EnvironmentVariable",
+    "variableName": "STALWART_DB_PASSWORD"
+  }
+}

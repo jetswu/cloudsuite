@@ -330,7 +330,59 @@ Jalankan dari folder compose:
 
 ## 12. Deploy Stalwart + Bulwark (Mail)
 
-TODO — Sprint 0.10.
+Stalwart Mail Server v0.16.21 sudah deployed di staging. Detail lengkap di `docs/stalwart-notes.md`.
+
+### 12.1 Komponen
+
+- **Container:** `cloudsuite-stalwart` (image: `stalwartlabs/stalwart:v0.16.21`)
+- **Config:** `/opt/cloudsuite/data/stalwart/config.json` (DataStore only, 226 B)
+- **Data volume:** `/opt/cloudsuite/data/stalwart/lib/` (PostgreSQL, DB `stalwart`)
+- **WebUI:** `127.0.0.1:8080` → proxy Nginx `https://mail.idchsuite.my.id`
+- **Ports exposed:** 25, 465, 587, 143, 993, 995
+
+### 12.2 Object Provisioning (apply NDJSON)
+
+```bash
+CLI=/tmp/stalwart-cli-x86_64-unknown-linux-gnu/stalwart-cli
+ADMINPW=$(grep "^STALWART_ADMIN_PASSWORD=" /opt/cloudsuite/.env | cut -d= -f2-)
+
+# Dry-run dulu
+$CLI --url http://172.18.0.9:8080 --user admin --password "$ADMINPW"   apply --dry-run --file /tmp/stalwart-<name>.ndjson
+
+# Apply real
+$CLI --url http://172.18.0.9:8080 --user admin --password "$ADMINPW"   apply --file /tmp/stalwart-<name>.ndjson
+```
+
+### 12.3 Recovery Mode
+
+Jika perlu bootstrap ulang:
+1. Set `"bootstrap" true` di `config.json`
+2. Restart container
+3. Apply NDJSON dasar (DnsServer, AcmeProvider, Domain, Account, SystemSettings)
+4. Hapus `"bootstrap"` dari `config.json` → restart → start normal
+
+### 12.4 Listener
+
+Default: 25, 465, 993, 995, 443, 8080, 4190
+Tambahan: 587 (submission/STARTTLS), 143 (IMAP/STARTTLS)
+
+**Restart container** setelah apply listener baru (Stalwart tidak hot-reload).
+
+### 12.5 DKIM + DNS
+
+- Dual DKIM: RSA + Ed25519, stage `pending` → publish via Task `DnsManagement`
+- DNS records (MX, SPF, DKIM, DMARC, SRV, MTA-STS, TLSRPT, CAA) di `Domain.dnsZoneFile`
+- Publish ke Cloudflare via `dnsManagement.auto=true`
+
+### 12.6 Health Check
+
+- `/healthz/live` → HTTP 200 `{"detail":"OK"}` (dipakai docker healthcheck)
+
+### 12.7 Referensi
+
+- `docs/stalwart-notes.md` — dokumentasi lengkap
+- `docs/TROUBLESHOOTING.md` — pembelajaran bug
+- Source: `structs.rs:4031-4110`, `defaults.rs:440-530`, `enums.rs:2708-2728`
 
 ## 13. Verifikasi Akhir
 

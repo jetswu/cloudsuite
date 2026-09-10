@@ -1,7 +1,7 @@
 # CloudSuite — Project State
 
 > Snapshot status project. Update setiap sprint selesai.
-> Terakhir update: 2026-09-10 (Sprint 0.9f).
+> Terakhir update: 2026-09-10 (Sprint 0.10a).
 
 ## 1. Overview
 
@@ -25,7 +25,8 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - [x] 0.9d — Compile docs (DEPLOYMENT + TROUBLESHOOTING)
 - [x] 0.9e — Perbaikan hasil review
 - [x] 0.9f — Project state + odoo notes
-- [ ] 0.10 — Stalwart + Bulwark + SSO
+- [x] 0.10a — Stalwart Mail Server + DNS
+- [ ] 0.10b — Bulwark webmail + SSO
 - [ ] 1 — Portal CloudSuite
 
 ## 3. Keputusan yang Dikunci
@@ -52,7 +53,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 
 ## 5. Kontainer
 
-7 container healthy:
+8 container healthy:
 
 - cloudsuite-postgres
 - cloudsuite-redis
@@ -61,6 +62,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - cloudsuite-authentik-worker
 - cloudsuite-nextcloud
 - cloudsuite-odoo
+- cloudsuite-stalwart
 
 ## 6. Next Action
 
