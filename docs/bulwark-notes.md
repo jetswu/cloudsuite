@@ -67,3 +67,25 @@
 ## Volumes
 - `bulwark-config`: `/app/data/admin` (persistent config)
 - `bulwark-state`: `/app/data/admin-state` (persistent state)
+
+## Redirect URI Config
+
+### Issue
+Bulwark pakai Next.js i18n → callback URL selalu ada locale prefix: `/en/auth/callback`, `/id/auth/callback`.
+
+### Fix di Authentik
+Redirect URI harus pakai `matching_mode: regex`:
+```json
+{
+  "matching_mode": "regex",
+  "url": "https://webmail\\.idchsuite\\.my\\.id/[a-z]{2}/auth/callback",
+  "redirect_uri_type": "authorization"
+}
+```
+
+### Grant Types
+WAJIB set: `["authorization_code", "refresh_token"]`
+
+### Scopes
+Bulwark request: `openid email profile` (offline_access juga perlu untuk refresh token).
+Authentik auto-allows via "overlap" mode walau tidak explicitly configured.

@@ -446,3 +446,36 @@ cd /opt/cloudsuite/infra/docker && docker compose --env-file /opt/cloudsuite/.en
 - **Verify**: `docker exec cloudsuite-bulwark env | grep OAUTH_ISSUER` → harus TANPA trailing slash
 - **Verify logs**: `docker logs cloudsuite-bulwark --tail 30 | grep -i discovery` → harus tidak ada error
 - **Verify discovery**: `docker exec cloudsuite-bulwark wget -qO- .../.well-known/openid-configuration` → return JSON
+
+## SSO Redirect URI Error + Invalid grant_type
+
+### Gejala
+1. Klik "Sign in with SSO" di webmail → Authentik error "redirect_uri"
+2. Setelah redirect_uri fix → error "Invalid grant_type for provider"
+
+### Root Cause
+1. **redirect_uri mismatch**: Bulwark (Next.js i18n) kirim callback `/en/auth/callback` tapi Authentik registered `/api/auth/callback` (strict mode)
+2. **grant_types kosong**: Authentik OAuth2 provider default `grant_types: []` — tidak support `authorization_code`
+
+### Fix
+1. Update redirect_uris ke regex mode:
+```bash
+curl -X PATCH -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "$AUTHENTIK_URL/api/v3/providers/oauth2/<pk>/" \
+  -d '{"redirect_uris": [{"matching_mode": "regex", "url": "https://webmail\\\\.idchsuite\\\\.my\\\\.id/[a-z]{2}/auth/callback", "redirect_uri_type": "authorization"}]}'
+```
+2. Add grant types:
+```bash
+curl -X PATCH -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "$AUTHENTIK_URL/api/v3/providers/oauth2/<pk>/" \
+  -d '{"grant_types": ["authorization_code", "refresh_token"]}'
+```
+
+### Verify
+- `curl -sk -o /dev/null -w "%{http_code}" "$AUTHENTIK_URL/application/o/authorize/?response_type=code&client_id=stalwart-mail&redirect_uri=https%3A%2F%2Fwebmail.idchsuite.my.id%2Fen%2Fauth%2Fcallback&scope=openid+email+profile&state=test"` → 302 (bukan 400)
+
+### Pencegahan
+- Selalu pakai regex matching_mode untuk OAuth2 redirect_uris yang punya locale prefix
+- Selalu set grant_types: authorization_code + refresh_token
