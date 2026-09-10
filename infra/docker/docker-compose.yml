@@ -245,6 +245,38 @@ services:
       retries: 3
       start_period: 10s
 
+  bulwark:
+    image: ghcr.io/bulwarkmail/webmail:latest
+    container_name: cloudsuite-bulwark
+    restart: unless-stopped
+    environment:
+      - JMAP_SERVER_URL=https://mail.idchsuite.my.id
+      - OAUTH_ENABLED=true
+      - OAUTH_ONLY=true
+      - OAUTH_CLIENT_ID=stalwart-mail
+      - OAUTH_CLIENT_SECRET=${BULWARK_CLIENT_SECRET}
+      - OAUTH_ISSUER_URL=https://auth.idchsuite.my.id/application/o/stalwart-mail/
+      - SESSION_SECRET=${BULWARK_SESSION_SECRET}
+      - STALWART_FEATURES=true
+      - ALLOW_CUSTOM_JMAP_ENDPOINT=false
+      - APP_NAME=CloudSuite Mail
+      - APP_SHORT_NAME=Mail
+    volumes:
+      - bulwark-config:/app/data/admin
+      - bulwark-state:/app/data/admin-state
+    networks:
+      - cloudsuite-net
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+volumes:
+  bulwark-config:
+  bulwark-state:
 networks:
   cloudsuite-net:
     external: true

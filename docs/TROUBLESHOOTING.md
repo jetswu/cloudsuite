@@ -397,3 +397,39 @@ cd /opt/cloudsuite/infra/docker && docker compose --env-file /opt/cloudsuite/.en
 
 ---
 
+
+## Bulwark SSO (Sprint 0.10b)
+
+### Bulwark returns blank page or redirect loop
+- **Cause**: OAUTH_ISSUER_URL trailing slash mismatch
+- **Fix**: OAUTH_ISSUER_URL harus ADA trailing slash: `https://auth.idchsuite.my.id/application/o/stalwart-mail/`
+- **Verify**: `docker exec cloudsuite-bulwark env | grep OAUTH_ISSUER_URL`
+
+### SESSION_SECRET empty in container
+- **Cause**: docker-compose uses `${BULWART_SESSION_SECRET}` but .env has `BULWARK_SESSION_SECRET` (typo: no K)
+- **Fix**: Pastikan variabel di compose MATCH dengan .env (BULWARK dengan K)
+- **Verify**: `docker exec cloudsuite-bulwark env | grep SESSION_SECRET`
+
+### Authentik API 403 on POST (create provider)
+- **Cause**: `Authorization: Token xxx` header format tidak work di Authentik 2026.x
+- **Fix**: Pakai `Authorization: Bearer xxx` format
+- **Note**: GET tetap work dengan Token format, POST/PUT/PATCH butuh Bearer
+
+### Stalwart OIDC Directory schema error
+- **Cause**: PRD lama pakai schema endpoint/fields/cache — tidak ada di v0.16.21
+- **Fix**: Pakai schema aktual: issuerUrl, claimUsername, claimName, claimGroups, requireAudience
+- **Note**: requireScopes field type `set<string>` — validasi format NDJSON
+
+### CORS error: No Access-Control-Allow-Origin
+- **Cause**: Stalwart tidak mengirim CORS headers untuk cross-origin requests
+- **Fix**: `stalwart-cli update Http --json "{\"usePermissiveCors\":true}"`
+- **Verify**: `stalwart-cli get Http | grep cors`
+
+### Authentik OIDC well-known returns HTML
+- **Cause**: Provider belum dibuat atau issuer_mode salah
+- **Fix**: Pastikan OAuth2 provider sudah ada + issuer_mode = per_provider
+- **Verify**: `curl -sk https://auth.idchsuite.my.id/application/o/stalwart-mail/.well-known/openid-configuration`
+
+### Nginx webmail 502 Bad Gateway
+- **Cause**: Bulwark container belum running atau port salah
+- **Fix**: `docker ps --filter name=bulwark` — pastikan healthy, port 3000

@@ -27,7 +27,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - [x] 0.9e — Perbaikan hasil review
 - [x] 0.9f — Project state + odoo notes
 - [x] 0.10a — Stalwart Mail Server + DNS
-- [ ] 0.10b — Bulwark webmail + SSO
+- [x] 0.10b — Bulwark webmail + SSO (⏳ pending DNS admin)
 - [ ] 1 — Portal CloudSuite
 
 ## 3. Keputusan yang Dikunci
@@ -49,7 +49,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 | Authentik (IdP) | auth.idchsuite.my.id | — | ✅ |
 | Nextcloud (Drive) | drive.idchsuite.my.id | ✅ | ✅ |
 | Odoo (ERP) | erp.idchsuite.my.id | ✅ | ✅ |
-| Stalwart + Bulwark (Mail) | mail.idchsuite.my.id | TODO | ⬜ |
+| Stalwart + Bulwark (Mail) | mail.idchsuite.my.id | webmail.idchsuite.my.id | ⚠️ pending DNS
 | Portal CloudSuite | — | TODO | ⬜ |
 
 ## 5. Kontainer
