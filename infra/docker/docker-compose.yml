@@ -45,6 +45,77 @@ services:
     mem_limit: 512m
     cpus: 0.5
 
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2026.8.2
+    container_name: cloudsuite-authentik-server
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER}
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_REDIS__PASSWORD: ${REDIS_PASSWORD}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+      AUTHENTIK_LISTEN__HTTP: 0.0.0.0:9000
+      AUTHENTIK_LISTEN__HTTPS: 0.0.0.0:9443
+      AUTHENTIK_LISTEN__METRICS: 0.0.0.0:9300
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_ADMIN_PASSWORD}
+      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_ADMIN_EMAIL}
+    volumes:
+      - /opt/cloudsuite/data/authentik/media:/media
+      - /opt/cloudsuite/data/authentik/certs:/certs
+      - /opt/cloudsuite/data/authentik/templates:/templates
+    networks:
+      - cloudsuite-net
+    expose:
+      - "9000"
+      - "9443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 2g
+    cpus: 1.5
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2026.8.2
+    container_name: cloudsuite-authentik-worker
+    restart: unless-stopped
+    command: worker
+    user: root
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_POSTGRESQL__HOST: postgres
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER}
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_REDIS__PASSWORD: ${REDIS_PASSWORD}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+      AUTHENTIK_LISTEN__HTTP: 0.0.0.0:9000
+      AUTHENTIK_LISTEN__HTTPS: 0.0.0.0:9443
+      AUTHENTIK_LISTEN__METRICS: 0.0.0.0:9300
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/cloudsuite/data/authentik/media:/media
+      - /opt/cloudsuite/data/authentik/certs:/certs
+      - /opt/cloudsuite/data/authentik/templates:/templates
+    networks:
+      - cloudsuite-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 1g
+    cpus: 1.0
+
   nginx:
     image: nginx:alpine
     container_name: cloudsuite-nginx
