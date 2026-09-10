@@ -117,3 +117,10 @@ Authentik actual issuer:  (WITH trailing slash).
 -  =  scope mappings — supaya claims ,  diinclude
 - Default  tidak include email claim → Stalwart  gagal
 
+
+## Authentication directoryId (fix5)
+Stalwart **Authentication singleton** punya field  yang menunjuk OIDC Directory mana yang dipakai untuk validasi token. Kalau  → Stalwart tidak tahu pakai config OIDC yang mana → semua SSO gagal.
+
+Set `directoryId` ke ID dari Authentik OIDC Directory (contoh: `jebbp7gkaaaa`).
+
+Cek: `stalwart-cli get Authentication --json | jq .directoryId`
