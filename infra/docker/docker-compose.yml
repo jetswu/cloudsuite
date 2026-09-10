@@ -208,6 +208,12 @@ services:
       - cloudsuite-net
     mem_limit: 256m
     cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   cloudsuite-net:

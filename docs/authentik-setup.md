@@ -39,7 +39,7 @@
 
 ## Catatan IPv6 (PENTING)
 
-Kernel staging **IPv6 mati total**. Authentik default bind `[::]:9000/9443/9300` → `OSError 97 EAFNOSUPPORT` di `server.rs:33`, restart-loop ±45 detik.
+Kernel staging **IPv6 mati total**. Authentik default bind `[::]:9000/9443/9300` → `error 97 EAFNOSUPPORT` di `server.rs:33`, restart-loop ±45 detik.
 Fix: override di **kedua** service (server + worker):
 
 ```yaml

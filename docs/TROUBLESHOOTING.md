@@ -1,13 +1,13 @@
 # CloudSuite — Troubleshooting
 
-> Terakhir diperbarui: 2026-09-10 (Sprint 0.9d).
+> Terakhir diperbarui: 2026-09-10 (Sprint 0.9e).
 > Setiap item: gejala, root cause, fix, pencegahan. Semua terverifikasi dari
 > staging kecuali yang bertanda [perlu verifikasi].
 
 ## 1. Authentik — IPv6 Crash Loop
 
 - Gejala: `cloudsuite-authentik-server` restart-loop sekitar 45 detik.
-  `docker logs` memuat `OSError 97 EAFNOSUPPORT` di `server.rs:33`.
+  `docker logs` memuat `error 97 EAFNOSUPPORT` di `server.rs:33`.
 - Root cause: kernel staging IPv6 mati total; Authentik default bind
   `[::]:9000/9443/9300` sehingga bind gagal.
 - Fix: override di KEDUA service (server dan worker):
@@ -24,17 +24,37 @@
 
 - Gejala: service yang konek ke redis gagal dengan `WRONGPASS invalid
   username-password pair`.
-- Root cause: password redis di /opt/cloudsuite/.env (`REDIS_PASSWORD`)
-  tidak sama dengan yang dipakai client (Authentik `AUTHENTIK_REDIS__PASSWORD`,
-  Nextcloud redis config), atau service start sebelum redis healthy.
-- Fix: samakan semua dari env yang sama, lalu restart client:
+- Root cause: password redis di `/opt/cloudsuite/.env` (`REDIS_PASSWORD`)
+  berisi karakter khusus (mis. `+`, `/`, `=`). Bila command redis-server
+  di compose di-inject langsung (`--requirepass $REDIS_PASSWORD` tanpa
+  quoting), shell memecah/mengubah password saat di-interpolasi sehingga
+  nilai yang benar-benar dipakai redis berbeda dari yang dipakai client.
+  Jadi akar masalahnya **quoting**, bukan sekadar "password beda".
+- Fix (pola yang sudah benar di staging):
+  generate password hex tanpa karakter khusus, lalu pakai `sh -c` +
+  environment variable:
+
+      # generate password hex 64 char (aman untuk shell/redis)
+      openssl rand -hex 32
+
+      # di docker-compose.yml service redis:
+      command: >
+        sh -c 'exec redis-server --requirepass "$$REDIS_PASSWORD" ...'
+      environment:
+        REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  `$$REDIS_PASSWORD` (double dollar) menunda interpolasi ke shell dalam
+  container, bukan ke shell host saat `docker compose` baca file, sehingga
+  nilai persis dari env yang dipakai. Lalu restart redis + client:
 
       cd /opt/cloudsuite/infra/docker
       docker compose up -d redis
       docker compose up -d authentik-server authentik-worker nextcloud
 
-- Pencegahan: pola env-based auth — satu sumber `REDIS_PASSWORD`;
-  `depends_on: redis condition: service_healthy`.
+- Pencegahan: selalu generate password redis pakai hex
+  (`openssl rand -hex 32`); jangan inject password langsung ke `command`
+  tanpa quoting `sh -c`; satu sumber `REDIS_PASSWORD`; healthcheck redis
+  `redis-cli -a "$$REDIS_PASSWORD" ping` ikut pola yang sama.
 
 ## 3. Authentik — Token 403 setelah Rotate SECRET_KEY
 
@@ -151,16 +171,31 @@
       chmod 600 /opt/cloudsuite/data/odoo/config/odoo.conf
 
 - Pencegahan: selalu set owner/mode ini tiap tulis ulang odoo.conf.
+
 ## 12. Git — SSH Permission denied (publickey)
 
 - Gejala: `git clone/push` via SSH gagal `Permission denied (publickey)`.
 - Root cause: key GitHub belum terdaftar untuk user hermes, atau remote
   masih HTTPS, atau permission key salah.
-- Fix: `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519` (tanpa passphrase bila
-  untuk automation), daftarkan public key ke repo, pastikan
-  `chmod 600` private key, dan `git remote set-url origin
-  git@github.com:jetswu/cloudsuite.git`.
-- Pencegahan: test `ssh -T git@github.com` sekali setelah setup.
+- Fix: key GitHub untuk hermes ada di `~/.ssh/github` (bukan `id_ed25519`).
+  Buat sekali dengan `ssh-keygen -t ed25519 -f ~/.ssh/github` (tanpa
+  passphrase bila untuk automation), daftarkan public key (`~/.ssh/github.pub`)
+  ke repo, pastikan `chmod 600 ~/.ssh/github`. Sertakan `~/.ssh/config`:
+
+      Host github.com
+          HostName github.com
+          User git
+          IdentityFile ~/.ssh/github
+          IdentitiesOnly yes
+
+  Lalu pastikan remote SSH:
+
+      git remote set-url origin git@github.com:jetswu/cloudsuite.git
+
+- Pencegahan: test sekali setelah setup `ssh -T git@github.com` (harus
+  membalas `Hi <user>! You've successfully authenticated...`); jangan
+  campur identitas dengan key lain — `IdentitiesOnly yes` memaksa pakai
+  `~/.ssh/github` saja.
 
 ## 13. Hermes — Iteration Budget Exhausted
 
@@ -252,12 +287,13 @@
 - Pencegahan: ingat Bagian 6 DEPLOYMENT.md — compose HANYA di
   `infra/docker/docker-compose.yml`.
 
-## 22. Nginx — Tidak Ada Healthcheck
+## 22. Nginx — Healthcheck
 
 - Gejala: `docker compose ps` menampilkan nginx `Up` tanpa label
-  `(healthy)` (status staging 2026-09-10: 6 container healthy, nginx Up saja).
+  `(healthy)`.
 - Root cause: healthcheck belum ditambah ke service nginx di compose.
-- Fix (TODO — tambahkan saat Sprint 0.10):
+- Fix: tambahkan blok berikut ke service nginx di compose (sudah diterapkan
+  staging saat Sprint 0.9e):
 
       healthcheck:
         test: ["CMD-SHELL", "wget --spider -q http://localhost/health || exit 1"]
@@ -266,6 +302,12 @@
         retries: 3
         start_period: 10s
 
-  Endpoint `/health` sudah ada di `default.conf` dan tiap vhost
-  (`return 200 "OK"`).
-- Status: TODO.
+  Endpoint `/health` sudah ada di `default.conf` (`return 200 "OK"`).
+  Terapkan lalu verifikasi:
+
+      cd /opt/cloudsuite/infra/docker
+      docker compose up -d nginx
+      docker compose ps nginx   # → harus menampilkan (healthy)
+
+- Pencegahan: jaga endpoint `/health` tetap ada; healthcheck nginx tidak
+  butuh dependensi service lain (loopback sendiri).

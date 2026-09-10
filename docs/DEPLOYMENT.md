@@ -1,6 +1,6 @@
 # CloudSuite — Panduan Deployment
 
-> Terakhir diperbarui: 2026-09-10 (Sprint 0.9d).
+> Terakhir diperbarui: 2026-09-10 (Sprint 0.9e).
 > Tujuan dokumen ini: deploy ulang CloudSuite dari VPS kosong tanpa mulai dari nol.
 
 ## 1. Overview
@@ -29,16 +29,36 @@ Repo: `git@github.com:jetswu/cloudsuite.git` (branch `main`).
 
 ## 2. Prasyarat
 
-- VPS: minimum 4 vCPU / 8 GB RAM untuk staging yang nyaman; staging aktual:
-  Debian 13 (trixie), 20 GB RAM, Docker 29.8.0. OS boleh Ubuntu 24.04 —
-  [perlu verifikasi] staging berjalan di Debian 13, langkah apt di bawah
-  ditulis untuk Debian/Ubuntu.
+- VPS: minimum 4 vCPU / 8 GB RAM (staging ringan); rekomendasi
+  10 vCPU / 20 GB RAM (seperti staging saat ini). Staging aktual:
+  Debian 13 (trixie), 10 vCPU, 20 GB RAM, Docker 29.8.0. OS boleh
+  Ubuntu 24.04 — [perlu verifikasi] staging berjalan di Debian 13,
+  langkah apt di bawah ditulis untuk Debian/Ubuntu.
 - Domain di Cloudflare: `idchsuite.my.id` plus subdomain
   `auth`, `drive`, `erp` (dan `mail` saat Sprint 0.10).
 - Cloudflare SSL mode: **Full (strict)** — origin menyajikan cert Origin CA,
   nginx `ssl_certificate /etc/nginx/certs/origin.pem`.
 - Tools di laptop admin: `ssh`, `git`, akses Cloudflare dashboard
   (untuk download Origin Certificate), akses GitHub repo.
+
+## 2.5 Setup Cloudflare
+
+1. Tambahkan A record untuk tiap subdomain web → IP VPS, mode **Proxied**
+   (awan oranye):
+   - `portal.idchsuite.my.id` (Portal — Sprint 0.10)
+   - `auth.idchsuite.my.id` (Authentik)
+   - `drive.idchsuite.my.id` (Nextcloud)
+   - `erp.idchsuite.my.id` (Odoo)
+   - `api.idchsuite.my.id` (API)
+   - `admin.idchsuite.my.id` (Admin)
+2. Subdomain `mail.*` → mode **DNS only** (awan abu-abu), karena proxy
+   Cloudflare hanya untuk HTTP(S); record mail (MX/SPF/DKIM/DMARC) tidak boleh
+   lewat proxy.
+3. SSL/TLS mode: **Full (strict)**.
+4. **Always Use HTTPS**: ON.
+5. **Automatic HTTPS Rewrites**: ON.
+6. Download Origin Certificate (hostnames `*.idchsuite.my.id`, validity
+   maksimum) → simpan sebagai `origin.pem` + `origin-key.pem` (lihat Bagian 8).
 
 ## 3. Setup VPS
 
@@ -50,9 +70,16 @@ sudo timedatectl set-timezone Asia/Jakarta
 # Buat user admin (contoh: admin) + SSH key, matikan login password/root bila perlu
 sudo adduser admin && sudo usermod -aG sudo admin
 
-# UFW: buka SSH/HTTP/HTTPS saja (aturan persis staging [perlu verifikasi —
+# UFW: buka SSH/HTTP/HTTPS + port mail (aturan persis staging [perlu verifikasi —
 # status ufw staging belum sempat dibaca karena hermes tanpa sudo ufw])
-sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 25/tcp    # SMTP
+sudo ufw allow 465/tcp   # SMTPS
+sudo ufw allow 587/tcp   # SMTP submission
+sudo ufw allow 993/tcp   # IMAPS
+sudo ufw allow 995/tcp   # POP3S
 sudo ufw enable
 
 # Docker (repo resmi Docker)
@@ -145,14 +172,32 @@ sekali (`docker network create cloudsuite-net`) sebelum `up` pertama.
 - Generate secret acak: `python3 -c "import secrets; print(secrets.token_hex(32))"`
   (hex 64 char) untuk password; Authentik SECRET_KEY 60 char dari token asli
   (panjang aktual staging `TOKEN_LEN=60` — cara generate awal [perlu verifikasi]).
-- Daftar key yang WAJIB ada (TANPA nilai — ambil dari staging):
-  `DOMAIN PUBLIC_IP PRIVATE_IP TZ POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD
-  REDIS_PASSWORD AUTHENTIK_SECRET_KEY AUTHENTIK_ADMIN_PASSWORD
-  AUTHENTIK_ADMIN_EMAIL ODOO_ADMIN_PASSWORD STALWART_ADMIN_PASSWORD
-  AUTHENTIK_API_TOKEN AUTHENTIK_TEMPLATE_CLIENT_SECRET NEXTCLOUD_ADMIN_USER
-  NEXTCLOUD_ADMIN_PASSWORD NEXTCLOUD_DB_NAME NEXTCLOUD_DB_USER
-  NEXTCLOUD_DB_PASSWORD NEXTCLOUD_DB_HOST ODOO_DB_NAME ODOO_DB_USER
-  ODOO_DB_PASSWORD ODOO_DB_HOST ODOO_MASTER_PASSWORD`
+- Daftar key yang WAJIB ada (TANPA nilai — ambil dari staging), dikelompokkan
+  per kategori:
+
+  **Umum**
+  - `DOMAIN` `PUBLIC_IP` `PRIVATE_IP` `TZ`
+
+  **Database (PostgreSQL)**
+  - `POSTGRES_DB` `POSTGRES_USER` `POSTGRES_PASSWORD`
+  - `NEXTCLOUD_DB_NAME` `NEXTCLOUD_DB_USER` `NEXTCLOUD_DB_PASSWORD` `NEXTCLOUD_DB_HOST`
+  - `ODOO_DB_NAME` `ODOO_DB_USER` `ODOO_DB_PASSWORD` `ODOO_DB_HOST`
+
+  **Authentik**
+  - `AUTHENTIK_SECRET_KEY` `AUTHENTIK_ADMIN_PASSWORD` `AUTHENTIK_ADMIN_EMAIL`
+  - `AUTHENTIK_API_TOKEN` `AUTHENTIK_TEMPLATE_CLIENT_SECRET`
+
+  **Nextcloud**
+  - `NEXTCLOUD_ADMIN_USER` `NEXTCLOUD_ADMIN_PASSWORD`
+
+  **Odoo**
+  - `ODOO_ADMIN_PASSWORD` `ODOO_MASTER_PASSWORD`
+
+  **Stalwart (mail — Sprint 0.10)**
+  - `STALWART_ADMIN_PASSWORD`
+
+  **Redis**
+  - `REDIS_PASSWORD`
 - Permission: `chmod 600 /opt/cloudsuite/.env`, owner `hermes:hermes`.
 - Backup SEBELUM setiap perubahan: `cp .env .env.bak-<tanggal>` (pola yang
   dipakai staging: `.env.bak-0.9`, `.env.bak-20260910-HHMMSS`). JANGAN commit.
@@ -178,7 +223,7 @@ Jalankan dari folder compose (lihat Bagian 6 soal path):
 Pastikan log tanpa EAFNOSUPPORT.
 
 - **IPv4 override (PENTING):** kernel staging IPv6 mati total; Authentik
-  default bind `[::]:9000/9443/9300` sehingga muncul `OSError 97 EAFNOSUPPORT`
+  default bind `[::]:9000/9443/9300` sehingga muncul `error 97 EAFNOSUPPORT`
   (`server.rs:33`) dan restart-loop sekitar 45 detik. Fix: kedua service
   (server DAN worker) wajib punya env
   `AUTHENTIK_LISTEN__HTTP: 0.0.0.0:9000`,
@@ -292,7 +337,8 @@ TODO — Sprint 0.10.
     docker compose -f /opt/cloudsuite/infra/docker/docker-compose.yml --env-file /opt/cloudsuite/.env ps
 
 Ekspektasi: 7 container Up — postgres/redis/authentik-server/authentik-worker/
-nextcloud/odoo (healthy), nginx Up (tanpa label healthy — healthcheck nginx TODO).
+nextcloud/odoo/nginx semua `(healthy)` (healthcheck nginx ditambah Sprint 0.9e,
+lihat TROUBLESHOOTING #22).
 
     curl -s -o /dev/null -w "auth:%{http_code}\n" https://auth.idchsuite.my.id/-/health/ready/
     curl -s -o /dev/null -w "erp:%{http_code}\n" https://erp.idchsuite.my.id/web/login
@@ -313,7 +359,43 @@ lalu dashboard).
 - Monitor storage VPS plus ukuran volume `data/` berkala.
 - Update image: pin versi di compose (jangan `latest`); test di staging dulu.
 
-## 15. Aturan Hermes
+## 15. Rollback / Recovery
+
+- **Restore `.env` dari backup:** bila `.env` rusak/ketimpa, pulihkan dari
+  snapshot terakhir lalu muat ulang:
+
+      cp /opt/cloudsuite/.env.bak-<tanggal> /opt/cloudsuite/.env
+      cd /opt/cloudsuite/infra/docker
+      docker compose --env-file /opt/cloudsuite/.env up -d
+
+  (Pola backup staging: `.env.bak-0.9`, `.env.bak-20260910-HHMMSS`.)
+
+- **Restart service bermasalah:** cek dulu dengan `docker compose ps`, lalu
+  restart service spesifik (jangan restart semua bila hanya satu yang gagal):
+
+      cd /opt/cloudsuite/infra/docker
+      docker compose restart <service>     # mis. redis / odoo / nextcloud
+      # atau rebuild satu service:
+      docker compose up -d --build <service>
+
+  Bila gagal terus, baca log: `docker compose logs --tail=100 <service>`.
+
+- **Rebuild penuh dari git:** bila repo staging berubah dan live perlu
+  disinkronkan ulang (pull dulu di repo, lalu turunkan & naikkan ulang stack):
+
+      cd /home/hermes/cloudsuite
+      git pull origin main
+      cd /opt/cloudsuite/infra/docker
+      docker compose down
+      docker compose pull
+      docker compose --env-file /opt/cloudsuite/.env up -d --build
+
+  Catatan: `down` menghapus container (volume data tetap), `pull` ambil image
+  terbaru, `up -d --build` bangun ulang image lokal (Odoo via Dockerfile) dan
+  naikkan stack. Lalu verifikasi dengan `docker compose ps` + curl health
+  (Bagian 13).
+
+## 16. Aturan Hermes
 
 - Kerja di `/opt/cloudsuite` (live) plus `/home/hermes/cloudsuite` (repo);
   sinkronkan manual per sprint.
@@ -324,7 +406,7 @@ lalu dashboard).
 - Backup `.env` sebelum ubah; bersihkan `/tmp` lokal dan staging tiap selesai;
   JANGAN commit `.env`.
 
-## 16. Kontak dan Referensi
+## 17. Kontak dan Referensi
 
 - Repo: `git@github.com:jetswu/cloudsuite.git`
 - Dokumen terkait: `docs/authentik-setup.md` (baseline plus changelog SSO),
