@@ -255,7 +255,7 @@ services:
       - OAUTH_ONLY=true
       - OAUTH_CLIENT_ID=stalwart-mail
       - OAUTH_CLIENT_SECRET=${BULWARK_CLIENT_SECRET}
-      - OAUTH_ISSUER_URL=https://auth.idchsuite.my.id/application/o/stalwart-mail/
+      - OAUTH_ISSUER_URL=https://auth.idchsuite.my.id/application/o/stalwart-mail
       - SESSION_SECRET=${BULWARK_SESSION_SECRET}
       - STALWART_FEATURES=true
       - ALLOW_CUSTOM_JMAP_ENDPOINT=false

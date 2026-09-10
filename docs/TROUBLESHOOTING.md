@@ -433,3 +433,16 @@ cd /opt/cloudsuite/infra/docker && docker compose --env-file /opt/cloudsuite/.en
 ### Nginx webmail 502 Bad Gateway
 - **Cause**: Bulwark container belum running atau port salah
 - **Fix**: `docker ps --filter name=bulwark` — pastikan healthy, port 3000
+
+## SSO webmail.idchsuite.my.id
+
+### "SSO is enabled but identity provider could not be reached"
+- **Gejala**: Buka https://webmail.idchsuite.my.id/en/login → error SSO
+- **Root cause**: OAUTH_ISSUER_URL trailing slash → Bulwark append `/.well-known/...` → double slash → HTTP 404
+- **Log error**: `[OAuth] Discovery failed for .../stalwart-mail//.well-known/openid-configuration returned HTTP 404`
+- **Fix**: Hapus trailing slash dari OAUTH_ISSUER_URL di .env DAN di docker-compose.yml
+  - .env: `BULWARK_OAUTH_ISSUER_URL=https://auth.idchsuite.my.id/application/o/stalwart-mail` (TANPA /)
+  - compose: `OAUTH_ISSUER_URL=https://auth.idchsuite.my.id/application/o/stalwart-mail` (TANPA /)
+- **Verify**: `docker exec cloudsuite-bulwark env | grep OAUTH_ISSUER` → harus TANPA trailing slash
+- **Verify logs**: `docker logs cloudsuite-bulwark --tail 30 | grep -i discovery` → harus tidak ada error
+- **Verify discovery**: `docker exec cloudsuite-bulwark wget -qO- .../.well-known/openid-configuration` → return JSON
