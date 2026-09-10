@@ -1,0 +1,77 @@
+# Authentik Baseline Setup — CloudSuite (staging)
+
+- **Authentik version:** 2026.8.2 (server + worker, image `ghcr.io/goauthentik/server:2026.8.2`)
+- **Domain:** `auth.idchsuite.my.id` (via nginx `auth.conf`, upstream `authentik-server:9000`)
+- **Tenant default domain:** `auth.idchsuite.my.id`
+- **Base URL:** `https://auth.idchsuite.my.id`
+
+## Brand
+
+- **Name:** CloudSuite (`Brand CloudSuite`)
+- **Default brand:** yes, domain `auth.idchsuite.my.id`
+- **Authentication flow:** `default-authentication-flow` (`Welcome to authentik!`, pk `4063fc1a-cde4-4ab6-801a-9ef5b3cc6b7f`)
+- **Brand pk:** `198d2e4e-8e22-4c4c-a5cf-783766e50e1f`
+- **Verifikasi:** `curl -skL https://auth.idchsuite.my.id/` → `HTTP:200`, `<title>CloudSuite</title>`
+
+## Groups
+
+| Group | pk |
+|---|---|
+| `cloudsuite-superadmin` | `0175716b-408c-4b6a-a764-817f4d5d3a5a` |
+| `cloudsuite-tenant-admin` | `d58df92a-cd22-4216-ace5-2d890d56d49b` |
+| `cloudsuite-users` | `953d2315-8bbf-4809-9415-0391bf4cabd9` |
+
+- `akadmin` (pk 6) adalah member `cloudsuite-superadmin` (+ bawaan `authentik Admins`).
+- Verifikasi: `GET /api/v3/core/users/6/` → `groups: ['authentik Admins', 'cloudsuite-superadmin']`.
+
+## Provider template (OIDC)
+
+- **Name:** `CloudSuite Services Template`, pk `1` (oauth2)
+- **Application slug:** `template-cloudsuite-services` (Application pk `c48c953b-15fa-4c00-a9db-d58a827ac2e9`)
+- **Client ID:** `SQtwKPEkkyg5XV08kMK2bemOI8guqeI8`
+- **Client type:** confidential, `redirect_uris: []` (template — isi saat layanan riil didaftarkan)
+- **Authorization flow:** `default-provider-authorization-explicit-consent` (`7f475261-68fa-45de-9226-de2be34014a5`)
+- **Invalidation flow:** `default-provider-invalidation-flow` (`3353607b-6e34-406a-95f6-74ef80852a35`)
+- **Signing key:** bawaan `authentik Self-signed Certificate` (`38b70fc0-69b8-44fa-b959-ad02ca4197da`)
+- **Subject mode:** `hashed_user_id`, **Issuer mode:** `global`, property mappings default (openid/email/profile)
+- **Client secret:** tersimpan di `/opt/cloudsuite/.env` sebagai `AUTHENTIK_TEMPLATE_CLIENT_SECRET` — TIDAK ditulis di dokumen ini.
+- **Well-known:** `https://auth.idchsuite.my.id/application/o/template-cloudsuite-services/.well-known/openid-configuration` → `HTTP:200`, berisi `issuer`, `authorization_endpoint`, `token_endpoint`, `jwks_uri`.
+
+## Catatan IPv6 (PENTING)
+
+Kernel staging **IPv6 mati total**. Authentik default bind `[::]:9000/9443/9300` → `OSError 97 EAFNOSUPPORT` di `server.rs:33`, restart-loop ±45 detik.
+Fix: override di **kedua** service (server + worker):
+
+```yaml
+AUTHENTIK_LISTEN__HTTP: 0.0.0.0:9000
+AUTHENTIK_LISTEN__HTTPS: 0.0.0.0:9443
+AUTHENTIK_LISTEN__METRICS: 0.0.0.0:9300
+```
+
+Jangan hapus baris ini saat edit compose.
+
+## Catatan token
+
+- **Tenant setting:** `default_token_duration = days=90` (`PATCH /api/v3/admin/settings/`).
+- Token API `hermes-automation` (identifier `hermes-automation`, intent `api`, user `akadmin`): expiry ±90 hari dari pembuatan.
+- Token yang expiring **tidak bisa diperpanjang via PATCH** (`/authentik/core/api/tokens.py` baris 88–89: `For API tokens, expires cannot be overridden` — kode versi 2026.8.2 memaksa durasi default tenant).
+- Nilai token tersimpan di `/opt/cloudsuite/.env` sebagai `AUTHENTIK_API_TOKEN` — TIDAK ditulis di dokumen ini, TIDAK di-commit.
+- DILARANG membuat token no-expiry (`expiring=false`).
+
+### Prosedur rotate token (revoke & recreate manual)
+
+1. Buat token sementara: `POST /api/v3/core/tokens/` `{"identifier":"hermes-rotate-tmp","intent":"api","user":6}` → HTTP:201.
+2. Ambil key-nya: `GET /api/v3/core/tokens/hermes-rotate-tmp/view_key/` (pakai **identifier**, bukan pk).
+3. Verifikasi token sementara: `GET /api/v3/core/users/me/` → HTTP:200.
+4. Hapus token lama: `DELETE /api/v3/core/tokens/hermes-automation/` → HTTP:204.
+5. Buat token baru: `POST /api/v3/core/tokens/` `{"identifier":"hermes-automation","intent":"api","user":6}` → HTTP:201, `expires` ±90 hari.
+6. Ambil key token baru via `view_key/`, update `AUTHENTIK_API_TOKEN` di `/opt/cloudsuite/.env` (`chmod 600`).
+7. Hapus token sementara: `DELETE /api/v3/core/tokens/hermes-rotate-tmp/` → HTTP:204.
+8. Verifikasi akhir: `GET /api/v3/core/users/me/` → HTTP:200 dan `GET /api/v3/core/tokens/hermes-automation/` menunjukkan `expires` baru.
+
+## Command yang berhasil (changelog)
+
+- `printf '<BOOTSTRAP_PASS>\n<BOOTSTRAP_PASS>\n' | docker exec -i cloudsuite-authentik-server ak changepassword akadmin` → `Password successfully changed for user akadmin`
+- `PATCH /api/v3/admin/settings/ {"default_token_duration":"days=90"}` → HTTP:200
+- `POST /api/v3/providers/oauth2/` (dengan `authorization_flow`, `invalidation_flow`, `signing_key`) → HTTP:201 (tanpa `invalidation_flow` → HTTP:400 `This field is required.`)
+- `POST /api/v3/core/applications/ {"slug":"template-cloudsuite-services","provider":1}` → HTTP:201
