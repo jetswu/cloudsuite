@@ -152,6 +152,12 @@ services:
       - "80"
     mem_limit: 1.5g
     cpus: 1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/status.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   nginx:
     image: nginx:alpine
