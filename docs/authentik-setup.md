@@ -117,3 +117,12 @@ Jangan hapus baris ini saat edit compose.
 - Set action_id=109 untuk 2 user (admin, provider_6_user_...) COMMIT OK; ir.default res.users action_id=109 DEFAULT SET OK, check default_action_id=109.
 - ir.config_parameter oauth: tidak ada (grep kosong) -> tidak ada redirect param khusus.
 - Restart odoo healthy; curl /web/login 200. Perubahan hanya data DB, tidak ada file config.
+
+## Sprint 0.9c Template User SSO Internal (2026-09-10)
+- Root cause /web/login_successful lanjutan: user baru via OAuth signup dapat template Portal (base.template_portal_user_id=5 portaltemplate, share=True) -> is_user_internal()=False -> core home.py _login_redirect ke /web/login_successful walau action_id=109.
+- Odoo 18 pakai param base.template_portal_user_id (BUKAN auth_signup.default_template_user_id=False yang tidak dipakai kode). Rantai: auth_oauth res_users.py:112-114 signup -> auth_signup res_users.py:116 _create_user_from_template -> baris 138 baca base.template_portal_user_id.
+- Solusi: user cloudsuite_template id=8 (email template@cloudsuite.local, active=True) grup HANYA Internal User + Technical Features, share=False, is_admin=False, is_superuser=False. JANGAN pakai admin sebagai template (copy dari admin = privilege escalation).
+- Set base.template_portal_user_id 5 -> 8 COMMIT OK.
+- User SSO existing id=6 dihapus (DELETE OK, verify count=0) agar re-login akadmin create fresh dari template baru.
+- API token hermes-automation: users/me 200 OK, create user testsso pk=7 OK, set_password 403 (scope read, wajar — bukan blocker). Hapus-buat user test via API butuh token scope lebih.
+- Prosedur test SSO user baru: hapus record user Odoo (unlink aman, tidak hapus user Authentik), re-login via Login with CloudSuite.
