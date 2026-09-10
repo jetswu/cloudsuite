@@ -479,3 +479,25 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" \
 ### Pencegahan
 - Selalu pakai regex matching_mode untuk OAuth2 redirect_uris yang punya locale prefix
 - Selalu set grant_types: authorization_code + refresh_token
+
+## Bulwark SSO — Authentication Failed (Issuer Mismatch)
+
+### Gejala
+Setelah SSO callback ke `/en/auth/callback?code=...`, Bulwark tampil "Authentication Failed".
+
+### Root Cause
+Stalwart OIDC Directory `issuerUrl` tanpa trailing slash (`/stalwart-mail`), tapi Authentik JWT `iss` claim pakai trailing slash (`/stalwart-mail/`). Stalwart lakukan exact string match → token ditolak.
+
+### Fix
+Update issuerUrl di Stalwart Directory:
+```bash
+stalwart-cli update Directory <id> --json "{\"issuerUrl\":\"https://auth.idchsuite.my.id/application/o/stalwart-mail/\"}"
+```
+Atau via NDJSON upsert (matchOn: description).
+
+### Pencegahan
+Cek issuer actual dari Authentik sebelum setup Stalwart OIDC Directory:
+```bash
+curl -s https://auth.idchsuite.my.id/application/o/<slug>/.well-known/openid-configuration | jq -r .issuer
+```
+Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.

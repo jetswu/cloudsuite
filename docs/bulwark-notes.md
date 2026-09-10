@@ -89,3 +89,20 @@ WAJIB set: `["authorization_code", "refresh_token"]`
 ### Scopes
 Bulwark request: `openid email profile` (offline_access juga perlu untuk refresh token).
 Authentik auto-allows via "overlap" mode walau tidak explicitly configured.
+
+## OIDC issuerUrl Trailing Slash
+
+Stalwart OIDC Directory `issuerUrl` HARUS pakai trailing slash:
+`https://auth.idchsuite.my.id/application/o/stalwart-mail/`
+
+Bulwark env `OAUTH_ISSUER_URL` TANPA trailing slash:
+`https://auth.idchsuite.my.id/application/o/stalwart-mail`
+
+Beda karena cara masing-masing library handle URL construction.
+Bulwark menambahkan `/.well-known/openid-configuration` sendiri.
+Stalwart lakukan exact string match terhadap `iss` claim di JWT.
+
+Cara cek issuer yang benar:
+```bash
+curl -s https://auth.idchsuite.my.id/application/o/stalwart-mail/.well-known/openid-configuration | jq -r .issuer
+```
