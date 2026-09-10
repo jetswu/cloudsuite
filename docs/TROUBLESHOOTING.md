@@ -368,3 +368,32 @@
   admin API hanya bisa diakses via container IP (172.18.0.9:8080).
 - Solusi: gunakan container IP atau docker exec curl localhost:8080.
 - Pencegahan: catat container IP di dokumentasi deployment.
+
+### 29. DKIM-Signature tidak muncul di outgoing email
+
+**Gejala:** Email dikirim dari Stalwart, tapi header `DKIM-Signature` tidak ada. SPF/DMARC pass (karena SPF align), tapi DKIM tidak ada signature.
+
+**Root Cause:**
+1. `dkimManagement` tidak di-set di Domain config -> signing disabled
+2. DKIM signature stage = `pending` -> signing hanya aktif saat stage = `active`
+
+**Fix:**
+```bash
+# Cek config
+stalwart-cli query Domain --fields name,dkimManagement --json
+stalwart-cli query DkimSignature --fields selector,stage --json
+
+# Fix 1: Set dkimManagement
+echo '{"@type":"update","object":"Domain","id":"b","value":{"dkimManagement":{"@type":"Automatic"}}}' | stalwart-cli apply
+
+# Fix 2: Set stage ke active
+echo '{"@type":"update","object":"DkimSignature","id":"<id>","value":{"stage":"active"}}' | stalwart-cli apply
+
+# Restart
+cd /opt/cloudsuite/infra/docker && docker compose --env-file /opt/cloudsuite/.env restart stalwart
+```
+
+**Verifikasi:** `DKIM-Signature` header muncul di email yang dikirim.
+
+---
+

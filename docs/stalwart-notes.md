@@ -98,6 +98,58 @@ Listener tambahan perlu **restart container** setelah apply (Stalwart tidak hot-
 - Publish auto ke Cloudflare (dnsManagement.auto=true)
 - Zone file tersedia di `Domain.dnsZoneFile` (read-only)
 
+
+## DKIM Signing — Root Cause & Fix
+
+### Problem
+DKIM public keys ter-publish ke DNS (via Cloudflare API), tapi outgoing email TIDAK punya header `DKIM-Signature`. SPF/DMARC pass (karena SPF align), tapi DKIM gagal karena tidak ada signature sama sekali.
+
+### Root Cause
+Dua issue:
+1. **`dkimManagement` tidak di-set di Domain** — field ini required untuk mengaktifkan DKIM signing. Tanpa ini, server tidak sign outgoing email.
+2. **DKIM signature stage = `pending`** — keys di-generate dengan stage `pending` dan tidak pernah di-transition ke `active`. Signing hanya aktif saat stage = `active`.
+
+### Fix
+```bash
+# 1. Set dkimManagement ke Automatic
+cat > /tmp/dkim-fix.ndjson << EOF
+{"@type":"update","object":"Domain","id":"b","value":{"dkimManagement":{"@type":"Automatic"}}}
+EOF
+
+# 2. Update stage ke active (2 keys)
+cat > /tmp/dkim-stage-fix.ndjson << EOF
+{"@type":"update","object":"DkimSignature","id":"jeapkzynksaa","value":{"stage":"active"}}
+{"@type":"update","object":"DkimSignature","id":"jeaphbjpkrqa","value":{"stage":"active"}}
+EOF
+
+# 3. Apply
+stalwart-cli apply --file /tmp/dkim-fix.ndjson
+stalwart-cli apply --file /tmp/dkim-stage-fix.ndjson
+
+# 4. Restart (perlu untuk dkimManagement take effect)
+cd /opt/cloudsuite/infra/docker
+docker compose --env-file /opt/cloudsuite/.env restart stalwart
+```
+
+### Verifikasi
+- Internal: kirim test@ → admin@ via 465, cek `DKIM-Signature` header ada
+- External: kirim admin@ → Gmail, cek `DKIM-Signature` header ada + `dkim=pass` di Gmail header
+
+### Field Reference
+| Object | Field | Nilai | Notes |
+|--------|-------|-------|-------|
+| Domain | `dkimManagement` | `{"@type":"Automatic"}` | Required untuk signing |
+| DkimSignature | `stage` | `active` | `pending` = tidak sign |
+| SenderAuth | `dkimSignDomain` | expression | Default: sign kalau local domain + authenticated |
+
+### Behavior
+- `dkimManagement.Automatic` → server auto-generate keys, auto-rotate, auto-publish DNS
+- `dkimManagement.Manual` → manual key management
+- `stage: pending` → key generated tapi belum aktif untuk signing
+- `stage: active` → key aktif, signing jalan
+- `SenderAuth.dkimSignDomain` → expression yang menentukan kapan sign (default: `is_local_domain(sender_domain) && !is_empty(authenticated_as)`)
+
+
 ## DNS Record (idchsuite.my.id)
 
 ```
@@ -165,7 +217,8 @@ docker inspect cloudsuite-stalwart --format "{{.State.Health.Status}}"
 |---------|--------|
 | `config.json` tidak load | Cek JSON valid, 2000:2000 mode 600, isi DataStore only |
 | Listener tidak muncul setelah apply | Restart container (tidak hot-reload) |
-| DKIM masih `pending` | Trigger Task `DnsManagement` |
+| DKIM masih `pending` | Trigger Task `DnsManagement` atau manual set `stage: active` via stalwart-cli apply |
+| DKIM keys ada tapi signing off | Cek `dkimManagement` di Domain (harus `Automatic`) + stage harus `active` + restart container |
 | Task hilang dari query | Normal — scheduler hapus task setelah selesai |
 | DB field error | Cek `describe <Object>` — banyak field tidak obvious (`authUsername` bukan `user`) |
 | Secret di NDJSON | Selalu `{"@type":"EnvironmentVariable","variableName":"..."}` — jangan hardcode |
@@ -188,3 +241,9 @@ docker inspect cloudsuite-stalwart --format "{{.State.Health.Status}}"
 - ✅ DNS records: MX, SPF, DKIM, DMARC, SRV, MTA-STS, TLSRPT, CAA, autoconfig
 - ✅ Mail flow: internal test OK (test@ → admin@)
 - ✅ Mail flow: external relay OK (admin@ → Gmail)
+
+## Sprint 0.10a-bis Status
+
+- ✅ DKIM signing aktif (dkimManagement=Automatic, stage=active)
+- ✅ DKIM-Signature header muncul di outgoing email
+- ✅ External test ke Gmail: DKIM-Signature present
