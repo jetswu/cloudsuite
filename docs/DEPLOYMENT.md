@@ -195,10 +195,30 @@ sekali (`docker network create cloudsuite-net`) sebelum `up` pertama.
   - `ODOO_ADMIN_PASSWORD` `ODOO_MASTER_PASSWORD`
 
   **Stalwart (mail — Sprint 0.10)**
-  - `STALWART_ADMIN_PASSWORD`
+  - `STALWART_ADMIN_USER` `STALWART_ADMIN_PASSWORD` `STALWART_DB_NAME`
+    `STALWART_DB_USER` `STALWART_DB_PASSWORD` `STALWART_DB_HOST`
+    `STALWART_DOMAIN` `STALWART_MAIL_HOSTNAME` `STALWART_TEST_PASSWORD`
+  - `STALWART_API_KEY` — [LATE] generate via stalwart-cli setelah Stalwart jalan
+
+  **jmap-webmail (Sprint 0.10d)**
+  - `JMAPWEBMAIL_CLIENT_ID` `JMAPWEBMAIL_CLIENT_SECRET` — [LATE] dari Authentik provider `stalwart-mail`
+  - `JMAPWEBMAIL_OIDC_ISSUER_URL` (TANPA trailing slash) `JMAPWEBMAIL_JMAP_URL`
+
+  **Cloudflare**
+  - `CLOUDFLARE_API_TOKEN` — scope `Zone:DNS:Edit` untuk 1 zone
 
   **Redis**
   - `REDIS_PASSWORD`
+
+> Template lengkap semua var: **`.env.example`** (committed di repo).
+> Untuk generate semua secret, lihat **`docs/SECRET-GENERATION.md`**.
+
+Catatan chicken-and-egg: `.env` diisi bertahap — Kategori 1 (offline)
+sebelum deploy, Kategori 2 ([LATE]: `AUTHENTIK_API_TOKEN`,
+`AUTHENTIK_TEMPLATE_CLIENT_SECRET`, `STALWART_API_KEY`,
+`JMAPWEBMAIL_CLIENT_ID/SECRET`) setelah service terkait jalan. Lihat
+`SECRET-GENERATION.md` § Urutan Pengisian .env.
+
 - Permission: `chmod 600 /opt/cloudsuite/.env`, owner `hermes:hermes`.
 - Backup SEBELUM setiap perubahan: `cp .env .env.bak-<tanggal>` (pola yang
   dipakai staging: `.env.bak-0.9`, `.env.bak-20260910-HHMMSS`). JANGAN commit.
