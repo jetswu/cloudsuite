@@ -398,6 +398,14 @@ cd /opt/cloudsuite/infra/docker && docker compose --env-file /opt/cloudsuite/.en
 ---
 
 
+
+## Account credentials opaque (Sprint 0.10b)
+
+- **Gejala**: set password admin gagal — `AccountPassword` singleton → `notFound`; `Account.credentials` via `create --json`/`update --json` → `Invalid value for object property`.
+- **Root cause**: `credentials` sebenarnya writable (bukan opaque) — tapi format yang dicoba salah: array (harus object map), `roles` salah (`{"admin":true}` harus `{"@type":"Admin"}`), dan `credentialId`/`createdAt` server-set.
+- **Fix**: `apply` NDJSON `upsert` Account dengan `credentials` sebagai object map key integer `"0"` + `secret` plaintext + `roles:{"@type":"Admin"}`.
+- **Note**: `secret` tersimpan plaintext di path direct-write (bukan via `AccountPassword`); rotate via WebUI setelah akses pulih agar ter-hash argon2id.
+
 ## Bulwark SSO (Sprint 0.10b)
 
 ### Bulwark returns blank page or redirect loop

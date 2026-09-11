@@ -247,3 +247,24 @@ docker inspect cloudsuite-stalwart --format "{{.State.Health.Status}}"
 - ✅ DKIM signing aktif (dkimManagement=Automatic, stage=active)
 - ✅ DKIM-Signature header muncul di outgoing email
 - ✅ External test ke Gmail: DKIM-Signature present
+
+## Password admin via CLI (Sprint 0.10b)
+
+Set password admin permanen di recovery mode TIDAK bisa lewat `AccountPassword`
+(singleton, hanya untuk CHANGE password yang sudah ada). Cara yang benar: tulis
+`credentials` langsung di Account via `apply` NDJSON.
+
+- `credentials` adalah `list<Credential>` — di NDJSON pakai object map dengan key
+  integer string (`"0"`, `"1"`, ...), BUKAN array.
+- `secret` menerima plaintext (verifikasi pakai compare literal bila tanpa prefix
+  hash `$`/`_`/`{`). Password random hex aman.
+- `credentialId` dan `createdAt` server-set — JANGAN tulis.
+- `roles` = tagged enum, format `{"@type":"Admin"}` (BUKAN `{"admin":true}`).
+
+```ndjson
+{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"adm":{"@type":"User","name":"admin","domainId":"<domain-id>","description":"System Administrator","roles":{"@type":"Admin"},"credentials":{"0":{"@type":"Password","secret":"<password>"}}}}}}
+```
+
+Verifikasi login: `stalwart-cli --user admin@<domain> --password <pass> query Account` → exit 0.
+Catatan: secret tersimpan plaintext di path direct-write; rotate via WebUI setelah
+akses pulih agar ter-hash argon2id.
