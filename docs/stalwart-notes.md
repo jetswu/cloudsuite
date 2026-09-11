@@ -268,3 +268,62 @@ Set password admin permanen di recovery mode TIDAK bisa lewat `AccountPassword`
 Verifikasi login: `stalwart-cli --user admin@<domain> --password <pass> query Account` → exit 0.
 Catatan: secret tersimpan plaintext di path direct-write; rotate via WebUI setelah
 akses pulih agar ter-hash argon2id.
+
+
+## Recovery mode procedure (Sprint 0.10b)
+
+Prosedur lengkap memulihkan akses admin Stalwart saat password hilang / DB
+di-wipe. Berlaku untuk chicken-and-egg: tanpa recovery admin, semua API return
+401 dan tidak ada credential valid untuk mengakses.
+
+### CLI yang benar
+
+Binary CLI ada di **host** (`/tmp/stalwart-cli-x86_64-unknown-linux-gnu/stalwart-cli`,
+versi 1.0.12), BUKAN di dalam container. Akses via IP container (bukan localhost):
+
+```bash
+IP=$(docker inspect cloudsuite-stalwart --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+CLI=/tmp/stalwart-cli-x86_64-unknown-linux-gnu/stalwart-cli
+$CLI --url http://$IP:8080 --user <user> --password <pass> <command>
+```
+
+Subcommand untuk apply NDJSON = `apply` (BUKAN `import`). Plan file NDJSON
+(1 objek JSON per baris), via `--file` atau `--stdin`. Tambah `--json` untuk
+output NDJSON per operasi, `--dry-run` untuk validasi tanpa eksekusi.
+
+### Langkah recovery
+
+1. **Backup DB** (WAJIB sebelum apa pun):
+   ```bash
+   docker exec cloudsuite-postgres pg_dump -U cloudsuite -d stalwart > /tmp/stalwart_backup_$(date +%Y%m%d_%H%M%S).sql
+   ```
+
+2. **Masuk recovery mode** — set env lalu restart:
+   ```
+   STALWART_RECOVERY_ADMIN=admin:<pass>
+   ```
+   Catatan: `STALWART_ADMIN_PASSWORD` normal = SHA-256 hash, TIDAK bisa login
+   web admin.
+
+3. **Provision Domain + Account** (jika hilang) — `apply` NDJSON upsert.
+
+4. **Set admin password** — lihat seksi "Password admin via CLI" di atas
+   (credentials object map integer key, secret plaintext,
+   roles `{"@type":"Admin"}`).
+
+5. **Restore config OIDC** — upsert Directory (issuerUrl trailing slash),
+   Authentication (`directoryId` = ID Directory), SystemSettings
+   (`defaultHostname`, `defaultDomainId`).
+
+6. **Keluar recovery mode** — hapus `STALWART_RECOVERY_ADMIN`, restart, pastikan
+   normal mode.
+
+7. **Verifikasi** — CLI login exit 0 + WebUI `curl ... /admin` → 302→200.
+
+### Gotchas
+
+- `directoryId` di Authentication WAJIB di-set ke Directory ID; null = SSO gagal
+  silent.
+- `credentialId` / `createdAt` server-set — jangan tulis di plan.
+- `roles` tagged enum: `{"@type":"Admin"}`, bukan `{"admin":true}`.
+- `issuerUrl` WAJIB trailing slash (otoritatif `.well-known`).
