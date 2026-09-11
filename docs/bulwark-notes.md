@@ -1,3 +1,7 @@
+> ⚠️ DEPRECATED — Bulwark digantikan jmap-webmail (Sprint 0.10d).
+> Alasan: bug double-exchange SSO. Lihat jmap-webmail-notes.md.
+> File ini untuk referensi historis.
+
 # Bulwark Webmail — CloudSuite Staging
 
 ## Info

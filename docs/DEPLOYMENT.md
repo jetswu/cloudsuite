@@ -385,6 +385,48 @@ Tambahan: 587 (submission/STARTTLS), 143 (IMAP/STARTTLS)
 - `docs/TROUBLESHOOTING.md` — pembelajaran bug
 - Source: `structs.rs:4031-4110`, `defaults.rs:440-530`, `enums.rs:2708-2728`
 
+## 12b. Deploy jmap-webmail (Webmail)
+
+Webmail client JMAP + OIDC SSO. Pengganti Bulwark (deprecated). Detail: `docs/jmap-webmail-notes.md`.
+
+### 12b.1 Prasyarat
+
+- Stalwart sudah jalan + healthy (§12)
+- Authentik punya provider `stalwart-mail` (lihat `authentik-setup.md`)
+- Var `.env` terisi: `JMAPWEBMAIL_CLIENT_ID/SECRET/OIDC_ISSUER_URL/JMAP_URL`
+- nginx `webmail.conf` (repo `infra/nginx/conf.d/`) — upstream `jmap-webmail:3000`
+
+### 12b.2 Deploy
+
+Image prebuilt — tidak ada Dockerfile build.
+
+```bash
+docker compose -f /opt/cloudsuite/infra/docker/docker-compose.yml --env-file /opt/cloudsuite/.env up -d jmap-webmail
+```
+
+Env container (dari .env): `JMAP_SERVER_URL`, `OAUTH_ENABLED=true`, `OAUTH_ONLY=true`,
+`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_ISSUER_URL`.
+
+### 12b.3 Authentik Provider (ringkas)
+
+- client_id: `stalwart-mail` (MATCH Stalwart Directory `requireAudience`)
+- redirect_uris regex: `https://webmail\.idchsuite\.my\.id(/[a-z]{2})?/auth/callback`
+- sub_mode: `user_email`, grant_types: `authorization_code, refresh_token`
+- property_mappings: scope openid/email/profile (reuse)
+
+### 12b.4 Stalwart Directory (OIDC)
+
+- Directory issuerUrl: `https://auth.idchsuite.my.id/application/o/stalwart-mail/` (**DENGAN** slash)
+- `Authentication.directoryId` = id directory OIDC (setelah ini, login admin password = 401; pakai ApiKey CLI)
+
+### 12b.5 Verify
+
+```bash
+docker ps --filter name=cloudsuite-jmapwebmail   # Up (healthy)
+curl -s -o /dev/null -w "%{http_code}\n" https://webmail.idchsuite.my.id/   # 200
+# SSO test: buka webmail → redirect Authentik → login EMAIL admin@idchsuite.my.id → balik ke webmail
+```
+
 ## 13. Verifikasi Akhir
 
     docker compose -f /opt/cloudsuite/infra/docker/docker-compose.yml --env-file /opt/cloudsuite/.env ps

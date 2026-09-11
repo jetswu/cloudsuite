@@ -127,3 +127,29 @@ Jangan hapus baris ini saat edit compose.
 - API token hermes-automation: users/me 200 OK, create user testsso pk=7 OK, set_password 403 (scope read, wajar — bukan blocker). Hapus-buat user test via API butuh token scope lebih.
 - Prosedur test SSO user baru: hapus record user Odoo (unlink aman, tidak hapus user Authentik), re-login via Login with CloudSuite.
 - HASIL TEST 2026-09-10: admin re-login SSO sebagai akadmin (user lama id=6 sudah dihapus) -> user baru id=9 auto-create share=False groups=[Internal User, Technical Features] action_id=109, masuk Discuss/dashboard TANPA stuck /web/login_successful. Template cloudsuite_template TERBUKTI berfungsi.
+
+
+## Provider Stalwart Mail (OIDC) — Sprint 0.10e (2026-09-11)
+
+Untuk jmap-webmail (`https://webmail.idchsuite.my.id`). Detail ops: `jmap-webmail-notes.md`.
+
+- **PK:** 6
+- **Client ID:** `stalwart-mail` (custom, MATCH Stalwart Directory `requireAudience`)
+- **Client type:** confidential (secret di `.env` `JMAPWEBMAIL_CLIENT_SECRET`)
+- **sub_mode:** `user_email` (login webmail pakai email, bukan username)
+- **include_claims_in_id_token:** true
+- **Redirect URIs (regex):** `https://webmail\.idchsuite\.my\.id(/[a-z]{2})?/auth/callback`
+  — optional locale, jmap-webmail kadang kirim `/auth/callback` tanpa `/{locale}`
+- **Grant types:** `authorization_code`, `refresh_token`
+- **Property mappings:** 3 scope mappings openid/email/profile (reuse dari provider existing)
+- **Signing key:** `38b70fc0-69b8-44fa-b959-ad02ca4197da`
+- **Application:** name "Stalwart Mail", slug `stalwart-mail`, launch URL `https://webmail.idchsuite.my.id`
+- **Sisi Stalwart:** Directory OIDC issuerUrl
+  `https://auth.idchsuite.my.id/application/o/stalwart-mail/` (DENGAN slash);
+  `Authentication.directoryId` → directory OIDC (id `jecwgwjgabaa` di staging)
+
+### Pembelajaran
+
+- grant_types WAJIB eksplisit (`authorization_code`,`refresh_token`) — default kosong → authorize `invalid_request`
+- Trailing slash: `OAUTH_ISSUER_URL` .env TANPA slash; `iss` token & Stalwart issuerUrl DENGAN slash
+- Setelah `directoryId` = OIDC: admin password login (Basic CLI/webadmin) 401 — manajemen via ApiKey (`secrets/stalwart-apikey.txt`)
