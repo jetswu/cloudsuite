@@ -327,3 +327,46 @@ output NDJSON per operasi, `--dry-run` untuk validasi tanpa eksekusi.
 - `credentialId` / `createdAt` server-set — jangan tulis di plan.
 - `roles` tagged enum: `{"@type":"Admin"}`, bukan `{"admin":true}`.
 - `issuerUrl` WAJIB trailing slash (otoritatif `.well-known`).
+
+## Sprint 0.10e — SSO Webmail Final + Follow-up Keamanan (2026-09-12)
+
+### Status SSO
+- SSO webmail (jmap-webmail → Authentik → Stalwart) **BERHASIL end-to-end**.
+  Bukti: login admin@idchsuite.my.id via Authentik → inbox tampil, console 0 error.
+- Root cause 401 terakhir: `Authentication.directoryId` belum di-set ke Directory OIDC
+  (Authentik). Setelah di-set, SSO jalan.
+- Catatan: ada delay propagasi config — percobaan pertama pasca-set gagal, sukses
+  setelah ±15 menit (kemungkinan cache JWKS/directory; container restart 23:41 WIB
+  juga bertepatan).
+
+### Konsekuensi directoryId=OIDC (PENTING)
+- Basic auth admin (CLI `-u` dan Webadmin UI) **401 PUTUS** — semua login password
+  diarahkan ke Directory OIDC.
+- Jalur manajemen yang tersisa:
+  1. **ApiKey CLI** (`stalwart-cli --api-key`) — utama
+  2. Recovery mode (`STALWART_RECOVERY_ADMIN`) — terakhir
+- CLI `query Log` via ApiKey mengembalikan 0 bytes (tidak didukung; hanya via Basic).
+
+### Lokasi Secrets (permanen)
+- `/opt/cloudsuite/secrets/` (mode 700, owner hermes — root chown tidak tersedia
+  tanpa sudo; deviasi dari rencana, tercatat)
+  - `stalwart-apikey.txt` (600) — ApiKey manajemen Stalwart; juga di `.env`
+    sebagai `STALWART_API_KEY`
+  - `cloudflare-cf.ini` (600) — CF API token utk certbot DNS-01; token terverifikasi
+    valid via API verify (`success: true`)
+- Semua file plaintext sensitif di `/tmp` sudah di-`shred -u -z` (apikey, cf.ini,
+  password admin/recovery/Authentik, ndjson apply, jmap-proxy.log berisi Bearer
+  ApiKey live, admin-setup.json, odoo_conf.txt, research_output.txt, dll).
+
+### Investigasi Restart Container (belum terpecahkan)
+- `cloudsuite-stalwart` restart pada 2026-09-11T16:41:05Z (23:41 WIB), ExitCode=0
+  (graceful), OOMKilled=false, RestartCount=6, policy unless-stopped.
+- docker events buffer tidak menyimpan event historis → penyebab (manual/compose)
+  **belum terverifikasi**. Tidak bukti OOM (memori normal 95MB/1GiB).
+- Restart ini bertepatan dengan SSO mulai jalan — kemungkinan reload config.
+
+### Follow-up Tersisa
+- Port 993/465 mungkin masih pakai origin.pem (belum diverifikasi).
+- LE cert renewal ~2026-11-10 (mail.pem berlaku s/d 2026-12-10).
+- Credential rotation (Authentik token, CF token, JMAPWEBMAIL secret) — belum.
+- CORS warning Authentik discovery (cosmetic).
