@@ -336,6 +336,11 @@
 - Solusi: apply NDJSON NetworkListener untuk 587 + 143, lalu restart container
   (Stalwart tidak hot-reload listener baru).
 - Pencegahan: cek /proc/net/tcp setelah restart untuk konfirmasi binding.
+- **RESOLVED (Sprint 0.10m, 2026-09-14):** listener `submission` (587) + `imap`
+  (143) sudah di-apply ke DB live (upsert matchOn name, bind `[::]:587`/`[::]:143`,
+  STARTTLS `tlsImplicit:false`). Verify: `ss -tlnp | grep -E ':587|:143'` +
+  `openssl s_client -starttls smtp/imap`. Format NDJSON: PANDUAN-DEPLOY.md §10.6
+  / repo `infra/docker/stalwart-listeners.ndjson`.
 
 ## 25. DKIM stage pending perlu trigger publish (Sprint 0.10a)
 
@@ -521,3 +526,21 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
   - : c92ccc80-eee8-4b74-b0cb-ae956cd848ac
 - Pencegahan: setelah recreate Authentik, re-assign property_mappings ke OAuth2 provider
 
+## mail.pem (nginx mail vhost) — Renewal MANUAL (Sprint 0.10m)
+
+- Fakta: cert LE `mail.idchsuite.my.id` di `infra/nginx/certs/mail.pem` (expire
+  ~Dec 10 2026) TIDAK auto-renew. Cert port mail (993/465/587/143, di-serve
+  Stalwart langsung) = wildcard `*.idchsuite.my.id` via ACME Stalwart — itu
+  auto-renew. Dua cert BERBEDA.
+- Penyebab: cert Stalwart tersimpan di internal store (DB), bukan file .pem —
+  tidak ada sumber file untuk auto-copy ke nginx (`/var/lib/stalwart` kosong,
+  tidak ada cron/script copy).
+- Solusi: reminder otomatis — script
+  `/opt/cloudsuite/infra/scripts/reminder-mail-cert.sh` + cron hermes
+  (VPS) `0 9 * * *` → log `/home/hermes/logs/reminder-mail-cert.log`.
+  WARNING kalau days_left < 30.
+- Renew manual (saat warning muncul): issue cert LE untuk `mail.<domain>`
+  (DNS-01 Cloudflare atau metode yang dipakai sebelumnya), gabung fullchain+key
+  → replace `mail.pem` → `docker exec cloudsuite-nginx nginx -s reload`.
+- Pencegahan: cek `openssl x509 -in .../mail.pem -noout -enddate` setelah deploy
+  baru; jangan asumsi auto-renew.

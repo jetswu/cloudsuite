@@ -848,7 +848,7 @@ Default listener: 25, 465, 993, 995, 443, 8080, 4190. Tambahan STARTTLS 587/143 
     openssl s_client -starttls smtp -connect mail.<domain>:587 -servername mail.<domain> </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer
     openssl s_client -starttls imap -connect mail.<domain>:143 </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer
 
-> **Status staging (per 0.10l, 2026-09-14):** listener 587/143 **belum di-apply** di DB live (`query NetworkListener` hanya menampilkan 25/465/993/995/443/8080/4190) — port 587/143 sudah dipublish docker tapi connection refused. Kalau deploy baru: apply NDJSON ini sejak awal. Kalau environment live ini mau diperbaiki: jalankan apply + restart di atas (approve admin dulu — di luar scope 0.10l yang read-only).
+> **Status staging (per 0.10m, 2026-09-14):** listener 587/143 **SUDAH di-apply** ke DB live (`submission` bind `[::]:587`, `imap` bind `[::]:143`, STARTTLS `tlsImplicit:false`) + restart — verify `ss -tlnp | grep -E ':587|:143'` dan `openssl s_client -starttls smtp/imap` OK. Backup listener sebelum apply: `query NetworkListener --json > /tmp/networklistener-backup-$(date +%Y%m%d).json`.
 
 ### 10.7 DNS Records + DKIM
 
@@ -930,7 +930,7 @@ autoconfig/autodiscover   CNAME mail...
 **Fakta cert live (0.10l, 2026-09-14, diverifikasi via `openssl s_client`):**
 
 - Port 993 + 465 (dan 995/25/587/143) = cert di-serve **langsung oleh Stalwart** (bukan nginx): LE wildcard `*.<domain>`, issuer `Let's Encrypt CN=YE1`, auto-renew via ACME Stalwart (DNS-01, `renewBefore R23` = 2/3 masa berlaku). Verifikasi: `openssl s_client -connect mail.<domain>:993 -servername mail.<domain> </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -dates`.
-- nginx `mail.pem` (HTTPS `mail.<domain>` via nginx, mail.conf) = cert LE terpisah `CN=mail.<domain>` — ditempatkan **manual**, TIDAK ada cron/script auto-copy dari Stalwart (cert Stalwart tersimpan di internal store, bukan file .pem). Expiry `mail.pem` ≠ expiry cert port. **[TBC — prosedur renew + copy manual `mail.pem` belum dibuat; set reminder sebelum expiry (cek: `openssl x509 -in /opt/cloudsuite/infra/nginx/certs/mail.pem -noout -enddate`)].**
+- nginx `mail.pem` (HTTPS `mail.<domain>` via nginx, mail.conf) = cert LE terpisah `CN=mail.<domain>` — ditempatkan **manual**, TIDAK ada cron/script auto-copy dari Stalwart (cert Stalwart tersimpan di internal store, bukan file .pem). Expiry `mail.pem` ≠ expiry cert port. **Reminder otomatis TERPASANG (0.10m):** script `/opt/cloudsuite/infra/scripts/reminder-mail-cert.sh` + cron hermes VPS `0 9 * * *` (log `/home/hermes/logs/reminder-mail-cert.log`, WARNING kalau < 30 hari). Saat warning muncul: issue LE cert `mail.<domain>` → gabung fullchain+key → replace `mail.pem` → `docker exec cloudsuite-nginx nginx -s reload`. Cek manual: `openssl x509 -in /opt/cloudsuite/infra/nginx/certs/mail.pem -noout -enddate`.
 
 ---
 
@@ -1038,8 +1038,8 @@ Plus: `/opt/cloudsuite/.env` (encrypted, di luar VPS), volume `/opt/cloudsuite/d
 ## Ops Rutin (pengingat)
 
 - Rotate token API Authentik tiap ±90 hari (expire otomatis; token expiring TIDAK bisa diperpanjang — buat baru, hapus lama).
-- LE cert **port mail** (993/465/995, di-serve Stalwart) = auto-renew via ACME Stalwart — tidak perlu apa-apa (cek ±30 hari sebelum expiry untuk memastikan).
-- LE cert **nginx `mail.pem`** = TIDAK auto-renew (manual, lihat 10.9) — pasang reminder.
+- LE cert **port mail** (993/465/995/587/143, di-serve Stalwart) = auto-renew via ACME Stalwart — tidak perlu apa-apa (cek ±30 hari sebelum expiry untuk memastikan).
+- LE cert **nginx `mail.pem`** = TIDAK auto-renew — reminder otomatis via cron VPS (lihat 10.9; script `reminder-mail-cert.sh`, WARNING < 30 hari).
 - Monitor disk: `df -h` + `du -sh /opt/cloudsuite/data/*`.
 - Update image: pin versi di compose (jangan `latest`), test di staging dulu.
 
@@ -1874,7 +1874,7 @@ Dokumen detail di repo `docs/`: `DEPLOYMENT.md` (deploy per-service),
 
 ---
 
-*Panduan ini dibuat Sprint 0.10k (2026-09-11), di-update Sprint 0.10l (2026-09-14: NDJSON DnsServer/AcmeProvider/Directory dari live + envelope diverifikasi dry-run, fakta cert mail LE, JWKS Odoo, listener 587/143). Sumber: staging CloudSuite live — semua config diverifikasi dari repo `jetswu/cloudsuite` commit terbaru. Item [TBC] = belum terverifikasi di staging.*
+*Panduan ini dibuat Sprint 0.10k (2026-09-11), di-update Sprint 0.10l (2026-09-14: NDJSON DnsServer/AcmeProvider/Directory dari live + envelope diverifikasi dry-run, fakta cert mail LE, JWKS Odoo, listener 587/143) dan Sprint 0.10m (2026-09-14: listener 587/143 di-apply ke live + reminder script mail.pem). Sumber: staging CloudSuite live — semua config diverifikasi dari repo `jetswu/cloudsuite` commit terbaru. Item [TBC] = belum terverifikasi di staging.*
 
 **[TBC] tersisa (belum bisa di-fix dari live, perlu keputusan/aksi admin):**
 1. Fail2ban jail custom (staging pakai default)
@@ -1882,5 +1882,3 @@ Dokumen detail di repo `docs/`: `DEPLOYMENT.md` (deploy per-service),
 3. Letak UI setting `default_token_duration` (staging via API PATCH)
 4. Alur first-run DB Odoo persis
 5. Backup procedure lengkap (belum dibuat — TODO besar)
-6. Renew + copy manual nginx `mail.pem` (lihat 10.9 — tidak auto-renew)
-7. Apply listener 587/143 di live staging (NDJSON ada di 10.6, belum di-apply ke DB — perlu approve admin)
