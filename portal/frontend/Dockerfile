@@ -2,8 +2,9 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 RUN corepack enable
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm v12 supply-chain guard: unrs-resolver (dep eslint-config-next) butuh build script
+RUN pnpm install --frozen-lockfile --dangerously-allow-all-builds
 
 # Stage 2: builder
 FROM node:22-alpine AS builder
