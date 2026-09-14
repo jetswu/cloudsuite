@@ -708,7 +708,7 @@ Catat Client ID + Secret.
    - Authorization endpoint: `https://auth.<domain>/application/o/odoo/authorize`
    - Token endpoint: `https://auth.<domain>/application/o/odoo/token`
    - UserInfo endpoint: `https://auth.<domain>/application/o/odoo/userinfo`
-   - JWKS endpoint: `https://auth.<domain>/application/o/odoo/.well-known/jwks.json` [TBC — format URL jwks persis; cek di well-known provider]
+   - JWKS endpoint: `https://auth.<domain>/application/o/odoo/jwks/` [terverifikasi live 0.10l — dari `.well-known/openid-configuration`; perhatikan format `/jwks/` BUKAN `.well-known/jwks.json`]
    - Enabled ✓
 2. (Opsional, UX) Home action default → Technical → User Defaults: model `res.users`, field `action_id` = action Discuss (`mail.action_discuss`).
 
@@ -813,11 +813,20 @@ Apply:
     $CLI --url http://$IP:8080 --user admin --password <STALWART_ADMIN_PASSWORD> apply --dry-run --file /tmp/stalwart-bootstrap.ndjson
     $CLI --url http://$IP:8080 --user admin --password <STALWART_ADMIN_PASSWORD> apply --file /tmp/stalwart-bootstrap.ndjson
 
-> NDJSON DnsServer (Cloudflare) + AcmeProvider (Let's Encrypt DNS-01) juga perlu
-> di-apply untuk terbitnya cert LE wildcard + auto-publish DNS — format field
-> persisnya: [TBC — cek `describe DnsServer` dan `describe AcmeProvider` via CLI,
-> atau dokumentasi Stalwart "remote management"]. `CLOUDFLARE_API_TOKEN` sudah
-> ter-passing ke container via compose env.
+DnsServer (Cloudflare) + AcmeProvider (Let's Encrypt DNS-01) — format TERVERIFIKASI dari live staging (0.10l):
+
+```ndjson
+{"@type":"upsert","object":"DnsServer","matchOn":["id"],"value":{"<dns-id>":{"@type":"Cloudflare","description":"Cloudflare DNS","secret":{"@type":"EnvironmentVariable","variableName":"CLOUDFLARE_API_TOKEN"},"timeout":30000,"ttl":300000,"pollingInterval":15000,"propagationTimeout":60000}}}
+```
+
+```ndjson
+{"@type":"upsert","object":"AcmeProvider","matchOn":["id"],"value":{"<acme-id>":{"@type":"LetsEncrypt","description":"Let's Encrypt DNS-01","directory":"https://acme-v02.api.letsencrypt.org/directory","challengeType":"Dns01","contact":{"mailto:admin@<domain>":true},"renewBefore":"R23","maxRetries":3,"reuseKey":false}}}
+```
+
+> Catatan field (dari `get ... --json` live):
+> - DnsServer: `timeout`/`ttl`/`pollingInterval`/`propagationTimeout` dalam **milidetik** (30000=30s, 300000=5m, 15000=15s, 60000=1m). Token Cloudflare TIDAK ditulis inline — reference env var `CLOUDFLARE_API_TOKEN` (sudah ter-passing ke container via compose env). `accountKey` (private key ACME) dibuat otomatis oleh Stalwart saat account LE terdaftar — JANGAN isi manual.
+> - AcmeProvider `renewBefore: "R23"` = renew saat 2/3 masa berlaku terlewati (default Stalwart; di UI tampil "2/3 of the remaining time").
+> - ID object (`<dns-id>`/`<acme-id>`) boleh bebas — Stalwart generate kalau kosong; ambil via `query DnsServer` / `query AcmeProvider` setelah apply.
 
 **Verify:**
 
@@ -834,7 +843,12 @@ Default listener: 25, 465, 993, 995, 443, 8080, 4190. Tambahan STARTTLS 587/143 
     cd /opt/cloudsuite/infra/docker
     docker compose --env-file /opt/cloudsuite/.env restart stalwart
 
-**Verify:** `docker exec cloudsuite-stalwart ss -tlnp 2>/dev/null || cat /proc/net/tcp | head` [TBC — image minim tool; verifikasi via koneksi eksternal `openssl s_client -starttls smtp -connect mail.<domain>:587`]
+**Verify:** Stalwart TIDAK hot-reload listener → restart dulu (command di atas), lalu cek dari luar container (image minim tool, tidak ada `ss`):
+
+    openssl s_client -starttls smtp -connect mail.<domain>:587 -servername mail.<domain> </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer
+    openssl s_client -starttls imap -connect mail.<domain>:143 </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer
+
+> **Status staging (per 0.10l, 2026-09-14):** listener 587/143 **belum di-apply** di DB live (`query NetworkListener` hanya menampilkan 25/465/993/995/443/8080/4190) — port 587/143 sudah dipublish docker tapi connection refused. Kalau deploy baru: apply NDJSON ini sejak awal. Kalau environment live ini mau diperbaiki: jalankan apply + restart di atas (approve admin dulu — di luar scope 0.10l yang read-only).
 
 ### 10.7 DNS Records + DKIM
 
@@ -880,10 +894,14 @@ autoconfig/autodiscover   CNAME mail...
        $CLI --url http://$IP:8080 --user admin --password <PW> create ApiKey --field description=cloudsuite-admin
        # copy key → /opt/cloudsuite/.env (STALWART_API_KEY) + /opt/cloudsuite/secrets/stalwart-apikey.txt (chmod 600)
 
-2. Buat **Directory OIDC** (upsert via CLI, escape hati-hati — atau via webadmin `https://mail.<domain>/admin` sebelum directoryId di-set):
+2. Buat **Directory OIDC** — format TERVERIFIKASI dari live staging (0.10l, dry-run ok). Simpan sebagai file NDJSON lalu apply (escape quoting via CLI inline suka bikin salah):
 
-       # issuerUrl DENGAN trailing slash (match iss token Authentik)
-       $CLI --url http://$IP:8080 --user admin --password <PW> --json update Directory ... [TBC — format NDJSON Directory staging: issuerUrl https://auth.<domain>/application/o/stalwart-mail/, audience stalwart-mail]
+       cat > /tmp/stalwart-directory.ndjson <<'EOF'
+       {"@type":"upsert","object":"Directory","matchOn":["id"],"value":{"stalwart-mail":{"@type":"Oidc","description":"Authentik","issuerUrl":"https://auth.<domain>/application/o/stalwart-mail/","requireAudience":"stalwart-mail","requireScopes":{"openid":true,"email":true},"claimUsername":"sub","claimName":"name","claimGroups":"groups"}}}
+       EOF
+       $CLI --url http://$IP:8080 --user admin --password <PW> apply --file /tmp/stalwart-directory.ndjson
+
+> issuerUrl DENGAN trailing slash (match `iss` token Authentik). Contoh live: issuerUrl `https://auth.idchsuite.my.id/application/o/stalwart-mail/`, audience `stalwart-mail`, scopes `openid,email`, claim `sub`/`name`/`groups`. Field lengkap dari `get Directory <id> --json`: `issuerUrl`, `requireAudience`, `requireScopes`, `claimUsername`, `usernameDomain`, `claimName`, `claimGroups`.
 
 3. Set **Authentication.directoryId** = ID directory OIDC dari langkah 2 (`query Directory` untuk ambil id):
 
@@ -908,6 +926,11 @@ autoconfig/autodiscover   CNAME mail...
     # IMAPS
     openssl s_client -connect mail.<domain>:993 -brief
     # Kirim/receive test via webmail (Bagian 11) atau telnet 465
+
+**Fakta cert live (0.10l, 2026-09-14, diverifikasi via `openssl s_client`):**
+
+- Port 993 + 465 (dan 995/25/587/143) = cert di-serve **langsung oleh Stalwart** (bukan nginx): LE wildcard `*.<domain>`, issuer `Let's Encrypt CN=YE1`, auto-renew via ACME Stalwart (DNS-01, `renewBefore R23` = 2/3 masa berlaku). Verifikasi: `openssl s_client -connect mail.<domain>:993 -servername mail.<domain> </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -dates`.
+- nginx `mail.pem` (HTTPS `mail.<domain>` via nginx, mail.conf) = cert LE terpisah `CN=mail.<domain>` — ditempatkan **manual**, TIDAK ada cron/script auto-copy dari Stalwart (cert Stalwart tersimpan di internal store, bukan file .pem). Expiry `mail.pem` ≠ expiry cert port. **[TBC — prosedur renew + copy manual `mail.pem` belum dibuat; set reminder sebelum expiry (cek: `openssl x509 -in /opt/cloudsuite/infra/nginx/certs/mail.pem -noout -enddate`)].**
 
 ---
 
@@ -1015,7 +1038,8 @@ Plus: `/opt/cloudsuite/.env` (encrypted, di luar VPS), volume `/opt/cloudsuite/d
 ## Ops Rutin (pengingat)
 
 - Rotate token API Authentik tiap ±90 hari (expire otomatis; token expiring TIDAK bisa diperpanjang — buat baru, hapus lama).
-- LE cert mail renewal otomatis via ACME Stalwart (cek ±30 hari sebelum expiry).
+- LE cert **port mail** (993/465/995, di-serve Stalwart) = auto-renew via ACME Stalwart — tidak perlu apa-apa (cek ±30 hari sebelum expiry untuk memastikan).
+- LE cert **nginx `mail.pem`** = TIDAK auto-renew (manual, lihat 10.9) — pasang reminder.
 - Monitor disk: `df -h` + `du -sh /opt/cloudsuite/data/*`.
 - Update image: pin versi di compose (jangan `latest`), test di staging dulu.
 
@@ -1850,4 +1874,13 @@ Dokumen detail di repo `docs/`: `DEPLOYMENT.md` (deploy per-service),
 
 ---
 
-*Panduan ini dibuat Sprint 0.10k (2026-09-11). Sumber: staging CloudSuite live — semua config diverifikasi dari repo `jetswu/cloudsuite` commit terbaru. Item [TBC] = belum terverifikasi di staging.*
+*Panduan ini dibuat Sprint 0.10k (2026-09-11), di-update Sprint 0.10l (2026-09-14: NDJSON DnsServer/AcmeProvider/Directory dari live + envelope diverifikasi dry-run, fakta cert mail LE, JWKS Odoo, listener 587/143). Sumber: staging CloudSuite live — semua config diverifikasi dari repo `jetswu/cloudsuite` commit terbaru. Item [TBC] = belum terverifikasi di staging.*
+
+**[TBC] tersisa (belum bisa di-fix dari live, perlu keputusan/aksi admin):**
+1. Fail2ban jail custom (staging pakai default)
+2. Docker `daemon.json` (belum diverifikasi staging pakai custom)
+3. Letak UI setting `default_token_duration` (staging via API PATCH)
+4. Alur first-run DB Odoo persis
+5. Backup procedure lengkap (belum dibuat — TODO besar)
+6. Renew + copy manual nginx `mail.pem` (lihat 10.9 — tidak auto-renew)
+7. Apply listener 587/143 di live staging (NDJSON ada di 10.6, belum di-apply ke DB — perlu approve admin)
