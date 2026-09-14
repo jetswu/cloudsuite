@@ -13,6 +13,8 @@ type Config struct {
 	Port               string
 	AuthentikIssuer    string
 	AuthentikClientID  string
+	AuthentikAPIURL    string
+	AuthentikAPIToken  string
 	CORSAllowedOrigins string
 	LogLevelRaw        string
 }
@@ -23,6 +25,8 @@ func Load() (*Config, error) {
 		Port:               getEnv("PORT", "8080"),
 		AuthentikIssuer:    os.Getenv("AUTHENTIK_ISSUER"),
 		AuthentikClientID:  os.Getenv("AUTHENTIK_CLIENT_ID"),
+		AuthentikAPIURL:    os.Getenv("AUTHENTIK_API_URL"),
+		AuthentikAPIToken:  os.Getenv("AUTHENTIK_API_TOKEN"),
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000"),
 		LogLevelRaw:        getEnv("LOG_LEVEL", "info"),
 	}

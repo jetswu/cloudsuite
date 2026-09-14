@@ -8,6 +8,21 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// SuperAdminGroup is the Authentik group whose members may access the admin
+// console. The group name is emitted in the ID token "groups" claim by the
+// default Authentik "profile" scope mapping.
+const SuperAdminGroup = "cloudsuite-superadmin"
+
+// HasSuperAdmin reports whether groups contains the super-admin group.
+func HasSuperAdmin(groups []string) bool {
+	for _, g := range groups {
+		if g == SuperAdminGroup {
+			return true
+		}
+	}
+	return false
+}
+
 // NewVerifier initializes the OIDC provider against the Authentik issuer
 // and returns an ID token verifier bound to the client ID.
 func NewVerifier(ctx context.Context, issuer, clientID string) (*oidc.IDTokenVerifier, error) {

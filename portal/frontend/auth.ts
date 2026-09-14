@@ -26,6 +26,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.name = (profile.name as string) ?? token.name
         token.preferred_username =
           (profile.preferred_username as string) ?? token.preferred_username
+        // Authentik "profile" scope mapping emits group names here.
+        token.groups = (profile as { groups?: string[] }).groups ?? []
       }
       return token
     },
@@ -35,6 +37,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.sub = token.sub as string
         session.user.preferred_username =
           token.preferred_username as string | undefined
+        session.user.groups = token.groups as string[] | undefined
       }
       return session
     },

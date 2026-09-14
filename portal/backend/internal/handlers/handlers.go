@@ -17,10 +17,11 @@ const claimsKey ctxKey = "claims"
 
 // Claims extracted from verified ID token.
 type Claims struct {
-	Sub               string `json:"sub"`
-	Email             string `json:"email"`
-	Name              string `json:"name"`
-	PreferredUsername string `json:"preferred_username"`
+	Sub               string   `json:"sub"`
+	Email             string   `json:"email"`
+	Name              string   `json:"name"`
+	PreferredUsername string   `json:"preferred_username"`
+	Groups            []string `json:"groups"`
 }
 
 // Handlers holds shared dependencies.

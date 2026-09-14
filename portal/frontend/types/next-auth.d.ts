@@ -6,6 +6,7 @@ declare module "next-auth" {
     user: {
       sub?: string
       preferred_username?: string
+      groups?: string[]
     } & DefaultSession["user"]
   }
 }
@@ -15,5 +16,6 @@ declare module "next-auth/jwt" {
     accessToken?: string
     sub?: string
     preferred_username?: string
+    groups?: string[]
   }
 }
