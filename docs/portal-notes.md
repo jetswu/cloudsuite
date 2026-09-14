@@ -50,3 +50,9 @@ Lihat TROUBLESHOOTING.md.
 - Dark mode = default; toggle di user menu (Moon/Sun), localStorage key `theme` ("light" mematikan dark, selainnya dark).
 - Komponen shadcn: button, card, input, label, dropdown-menu, avatar, skeleton, separator; custom: service-card, user-menu, theme-toggle, me-status.
 - Tambah komponen shadcn: `pnpm dlx shadcn@latest add <comp>` (jangan downgrade Tailwind 4).
+
+## JWKS Empty Fix (Sprint 1.0b-fix)
+- Gejala: dashboard prod `/api/me` → 401 "Gagal memuat data akun"; JWKS provider `portal` return `{}`.
+- Root cause: provider OIDC `portal` (PK 7) tidak punya `signing_key` → go-oidc verifier tanpa key → semua token ditolak 401.
+- Fix: PATCH `signing_key` provider 7 = `38b70fc0-69b8-44fa-b959-ad02ca4197da` (reuse cert existing, sama dengan provider stalwart-mail/Nextcloud/Odoo).
+- Verify: `curl -s https://auth.idchsuite.my.id/application/o/portal/jwks/` → `{"keys":[{"kty":"RSA","alg":"RS256",...}]}`.

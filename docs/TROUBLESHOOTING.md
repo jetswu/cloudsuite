@@ -544,3 +544,16 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
   → replace `mail.pem` → `docker exec cloudsuite-nginx nginx -s reload`.
 - Pencegahan: cek `openssl x509 -in .../mail.pem -noout -enddate` setelah deploy
   baru; jangan asumsi auto-renew.
+
+## JWKS Empty — /api/me 401 (Sprint 1.0b-fix)
+### Gejala
+- Dashboard portal: fetch `/api/me` → 401, UI "Gagal memuat data akun".
+- `curl -sk https://auth.idchsuite.my.id/application/o/portal/jwks/` → `{}` (content-length 2).
+### Root Cause
+- Provider OIDC `portal` (PK 7) tidak punya `signing_key` → JWKS kosong → go-oidc verifier tidak punya RSA key → semua JWT ditolak.
+### Fix
+- PATCH `signing_key` provider 7 = cert existing `38b70fc0-69b8-44fa-b959-ad02ca4197da` (reuse dari stalwart-mail).
+### Verify
+- JWKS return `{"keys":[{"kty":"RSA","alg":"RS256"}]}`.
+- `docker compose --env-file /opt/cloudsuite/.env restart portal-backend` → healthy.
+- Login SSO → `/api/me` 200.
