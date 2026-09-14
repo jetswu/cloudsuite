@@ -1055,6 +1055,50 @@ SSO manual test: buka portal → "Sign in with CloudSuite" → login Authentik �
 
 ---
 
+## Bagian 12d — Admin Console (Sprint 1.2)
+
+### Prasyarat
+
+- Backend + frontend Sprint 1.2 (commit `7cbbb06`) sudah terdeploy (Bagian 12c).
+- `/opt/cloudsuite/.env` punya `AUTHENTIK_API_URL` (base URL Authentik, tanpa `/api/v3`/trailing slash) dan `AUTHENTIK_API_TOKEN` (token API admin Authentik).
+  - Contoh internal: `AUTHENTIK_API_URL=http://authentik-server:9000`.
+- User superadmin adalah member group `cloudsuite-superadmin` (misal `akadmin`).
+
+### Akses & Otorisasi
+
+- URL: `https://portal.<domain>/admin` (redirect ke `/admin/users`).
+- Hanya superadmin (group `cloudsuite-superadmin`) yang bisa akses.
+  - Tanpa login → redirect `/login`.
+  - Login tapi bukan superadmin → redirect `/dashboard` (UI), API → 403 `{"error":"not superadmin"}`.
+- Scope: CRUD user + group (MVP). Tenant admin UI di `/manage` = Phase 2 (BUKAN Sprint 1.2).
+
+### Smoke test API
+
+    # Tanpa token → 401
+    curl -sk https://portal.<domain>/api/admin/users -w '\n%{http_code}\n'
+
+    # Dengan token superadmin (extract dari browser: /api/auth/session → accessToken) → 200
+    curl -sk https://portal.<domain>/api/admin/users \
+      -H "Authorization: Bearer <TOKEN>" -w '\n%{http_code}\n'
+
+    # Non-superadmin → 403 {"error":"not superadmin"}
+
+### Verifikasi end-to-end (browser)
+
+1. Login sebagai `akadmin` (superadmin).
+2. User menu → "Admin" muncul.
+3. `/admin/users` → list user (2 user awal: ak-outpost + akadmin).
+4. Tambah user → cek muncul di Authentik (`/api/v3/core/users/`).
+5. `/admin/groups` → list group (6 group awal), CRUD group.
+6. Login user biasa → `/admin` harus redirect `/dashboard`, `/api/admin/users` → 403.
+
+### Troubleshooting cepat
+
+- `/api/admin/*` 403 padahal user superadmin → cek claim `groups` di token (scope OIDC wajib `profile`). Backend log "admin API enabled" harus muncul.
+- Endpoint return 500/empty → cek `AUTHENTIK_API_URL` (jangan sertakan `/api/v3`) dan `AUTHENTIK_API_TOKEN` di `.env` + compose service `portal-backend`.
+
+---
+
 ## Bagian 13 — Backup (Opsional)
 
 Status: [TBC] — prosedur backup lengkap belum ada (TODO staging).

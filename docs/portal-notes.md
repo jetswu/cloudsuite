@@ -69,3 +69,14 @@ Lihat TROUBLESHOOTING.md.
   1. regex `https://webmail\.idchsuite\.my\.id(/[a-z]{2})?/auth/callback` (callback validation, existing).
   2. strict `https://webmail.idchsuite.my.id` (origin polos, untuk CORS browser).
 - Alasan: Authentik CORS allowlist pakai literal urlparse match, regex redirect_uri tidak cukup → tambah origin polos strict.
+
+## Admin Console (Sprint 1.2)
+- URL: `/admin` (superadmin only) → redirect ke `/admin/users`.
+- Akses: hanya user dengan group `cloudsuite-superadmin` (non-superadmin → redirect `/dashboard`, API → 403 `{"error":"not superadmin"}`).
+- Halaman: `/admin/users` (list + create + delete user), `/admin/groups` (list + create + delete group).
+- Endpoint backend: `/api/admin/users`, `/api/admin/groups` (proxy ke Authentik API via `AUTHENTIK_API_URL` + `AUTHENTIK_API_TOKEN`).
+- Middleware: `RequireSuperAdmin` cek JWT claim `groups` mengandung `cloudsuite-superadmin`.
+- Frontend: `middleware.ts` proteksi route `/admin/*` (unauthenticated → `/login`, non-superadmin → `/dashboard`).
+- Env backend baru: `AUTHENTIK_API_URL` (base Authentik, contoh `http://authentik-server:9000`), `AUTHENTIK_API_TOKEN` (token API admin).
+- Tenant admin UI (per-tenant) akan di `/manage` (Phase 2) — BUKAN bagian Sprint 1.2.
+
