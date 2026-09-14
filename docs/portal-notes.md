@@ -27,5 +27,12 @@
 ## Deploy
 Lihat PANDUAN-DEPLOY.md Bagian 12c.
 
+## Nginx Routing (WAJIB)
+- `/api/auth/*` → portal-frontend:3000 (route NextAuth `app/api/auth/[...nextauth]`)
+- `/api/*` → portal-backend:8080 (API Go)
+- `/` → portal-frontend:3000
+
+Kalau `/api/auth/` tidak di-split ke frontend, semua endpoint NextAuth 404 (default 404 Go) → SSO gagal total.
+
 ## Troubleshooting
 Lihat TROUBLESHOOTING.md.
