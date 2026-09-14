@@ -370,3 +370,33 @@ output NDJSON per operasi, `--dry-run` untuk validasi tanpa eksekusi.
 - LE cert renewal ~2026-11-10 (mail.pem berlaku s/d 2026-12-10).
 - Credential rotation (Authentik token, CF token, JMAPWEBMAIL secret) — belum.
 - CORS warning Authentik discovery (cosmetic).
+
+## Sprint 1.1-fix4 — Unban nginx + whitelist docker subnet (2026-09-14)
+
+### Root cause 502 JMAP
+- Scanner publik hit `/wp-admin/setup-config.php` via nginx → Stalwart lihat source
+  IP = nginx (`172.18.0.3`) → auto-ban permanen (`reason: portScanning`,
+  `expiresAt: null`). Semua request nginx→Stalwart di-reset (Connection reset).
+  portal-backend (IP sendiri, tidak lewat nginx) tetap bisa akses.
+
+### Fix
+1. Unban `172.18.0.3`: `stalwart-cli delete BlockedIp --ids <id>` (hapus dari store).
+2. Whitelist subnet: upsert `AllowedIp` `172.18.0.0/16` (field = `reason`, BUKAN
+   `description`).
+3. Restart container untuk flush cache ban in-memory (delete via JMAP TIDAK flush
+   cache; SIGHUP juga TIDAK — ban tetap di-hold sampai restart).
+
+### Gotchas (PENTING)
+- `apply` NDJSON format = `object`/`value` (key = `address`), BUKAN
+  `@type`/`matchOn`. Delete pakai `delete <Type> --ids <id>`, bukan destroy NDJSON.
+- Schema `AllowedIp` pakai field `reason` (bukan `description`).
+- `BlockedIp`/`AllowedIp` yang tersisa di store TIDAK sama dengan ban aktif di
+  memory — restart diperlukan untuk sinkron.
+
+### Verifikasi (semua hijau)
+- nginx→Stalwart:8080 = HTML 200 (sebelumnya reset).
+- nginx→Stalwart:8080/.well-known/jmap = JMAP JSON 200.
+- External `https://mail.idchsuite.my.id/.well-known/jmap` = 307→200 (follow).
+- External `https://webmail.idchsuite.my.id/` = HTTP 200.
+- `BlockedIp` = 1 entry (`146.190.168.200`); `172.18.0.3` hilang.
+- `AllowedIp` = 1 entry (`172.18.0.0/16`, reason "Docker network cloudsuite-net").
