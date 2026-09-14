@@ -42,3 +42,11 @@ Lihat TROUBLESHOOTING.md.
 - Log nginx: `upstream sent too big header while reading response header from upstream`.
 - Root cause: NextAuth set cookie session JWT (berisi accessToken Authentik) > proxy_buffer_size default nginx.
 - Fix (sudah diterapkan, commit `93be5c7`): `proxy_buffer_size 16k; proxy_buffers 8 16k; proxy_busy_buffers_size 24k;` di server block portal.conf.
+
+## Design System
+- Design tokens CSS variable di `app/globals.css` (light + dark), Tailwind 4 `@custom-variant dark`.
+- Primary `#1e40af`, accent `#3b82f6`, dark bg `#0f172a`, dark card `#1e293b`, border `#334155`.
+- Font: Geist Sans (default Next.js 15) + Geist Mono; logo text "CloudSuite" + lucide `Cloud`.
+- Dark mode = default; toggle di user menu (Moon/Sun), localStorage key `theme` ("light" mematikan dark, selainnya dark).
+- Komponen shadcn: button, card, input, label, dropdown-menu, avatar, skeleton, separator; custom: service-card, user-menu, theme-toggle, me-status.
+- Tambah komponen shadcn: `pnpm dlx shadcn@latest add <comp>` (jangan downgrade Tailwind 4).
