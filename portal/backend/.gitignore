@@ -1,0 +1,10 @@
+# binaries
+server
+server.exe
+
+# env (jangan commit)
+.env
+
+# test
+*.test
+*.out

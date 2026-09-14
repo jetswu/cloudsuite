@@ -33,3 +33,7 @@ build/
 
 # Docker
 *.pid
+.pnpm-store/
+.pnpm-store/
+.local/
+.cache/
