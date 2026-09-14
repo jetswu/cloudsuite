@@ -557,3 +557,22 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 - JWKS return `{"keys":[{"kty":"RSA","alg":"RS256"}]}`.
 - `docker compose --env-file /opt/cloudsuite/.env restart portal-backend` → healthy.
 - Login SSO → `/api/me` 200.
+
+## Mail SSO CORS — "Authentication Failed" (Sprint 1.1-fix)
+### Gejala
+- Webmail `https://webmail.idchsuite.my.id` klik "Sign in with SSO" → setelah login Authentik → "Authentication Failed".
+- Authentik log: `CORS: Origin is not an allowed origin` untuk `https://webmail.idchsuite.my.id`.
+### Root Cause
+- jmap-webmail jalankan OIDC **client-side** (browser fetch ke token endpoint) → butuh header `Access-Control-Allow-Origin`.
+- Authentik TIDAK punya field CORS global; allowlist di-hardcode ke `redirect_uris` provider.
+- `cors_allow()` (`providers/oauth2/utils.py`) match pakai `urlparse()` literal (scheme+hostname+port), BUKAN regex.
+- `redirect_uris` stalwart-mail (PK 6) hanya berisi regex `https://webmail\.idchsuite\.my\.id(...)` → `urlparse` baca hostname `webmail\.idchsuite\.my\.id` (dengan backslash literal) → tidak match origin polos browser.
+- Drive & ERP sukses karena OIDC flow server-side, tidak kena CORS browser.
+### Fix
+- Tambah 1 entry `redirect_uris` strict origin polos, TANPA hapus entry regex lama:
+```json
+{"matching_mode": "strict", "url": "https://webmail.idchsuite.my.id", "redirect_uri_type": "authorization"}
+```
+### Verify
+- `curl -s -D - -X POST .../application/o/token/` dengan `Origin: https://webmail.idchsuite.my.id` → `access-control-allow-origin: https://webmail.idchsuite.my.id`.
+- Discovery endpoint `.well-known/openid-configuration` → header CORS yang sama.

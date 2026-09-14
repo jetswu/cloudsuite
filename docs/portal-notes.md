@@ -63,3 +63,9 @@ Lihat TROUBLESHOOTING.md.
 - ERP → https://erp.idchsuite.my.id
 - Buka di tab baru (`target="_blank"`, `rel="noopener noreferrer"`).
 - `ServiceCard` = wrap `<Link>` seluruh card + `cursor-pointer` + hover border/bg.
+
+## Mail SSO CORS Fix (Sprint 1.1-fix)
+- Provider `stalwart-mail` (PK 6) `redirect_uris` = 2 entry:
+  1. regex `https://webmail\.idchsuite\.my\.id(/[a-z]{2})?/auth/callback` (callback validation, existing).
+  2. strict `https://webmail.idchsuite.my.id` (origin polos, untuk CORS browser).
+- Alasan: Authentik CORS allowlist pakai literal urlparse match, regex redirect_uri tidak cukup → tambah origin polos strict.
