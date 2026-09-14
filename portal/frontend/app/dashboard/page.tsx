@@ -9,7 +9,7 @@ const services = [
     icon: Mail,
     name: "Mail",
     description: "Webmail Stalwart untuk email organisasi Anda.",
-    href: "https://mail.idchsuite.my.id",
+    href: "https://webmail.idchsuite.my.id",
   },
   {
     icon: HardDrive,

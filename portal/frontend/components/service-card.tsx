@@ -21,10 +21,10 @@ export function ServiceCard({
     <Link
       href={href}
       target="_blank"
-      rel="noreferrer"
+      rel="noopener noreferrer"
       aria-label={`Buka layanan ${name}`}
       className={cn(
-        "group flex flex-col gap-3 rounded-lg border border-border bg-card p-5",
+        "group flex cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-5",
         "transition-colors hover:border-ring/60 hover:bg-accent",
         "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         className,
