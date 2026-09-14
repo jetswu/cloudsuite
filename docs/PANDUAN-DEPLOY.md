@@ -989,7 +989,7 @@ Browser `https://webmail.<domain>` → redirect Authentik → login pakai **EMAI
     cd /opt/cloudsuite/infra/docker
     docker compose --env-file /opt/cloudsuite/.env ps
 
-Ekspektasi 9 container `(healthy)`: postgres, redis, authentik-server, authentik-worker, nextcloud, odoo, stalwart, nginx, jmap-webmail.
+Ekspektasi 11 container `(healthy)`: postgres, redis, authentik-server, authentik-worker, nextcloud, odoo, stalwart, nginx, jmap-webmail, portal-backend, portal-frontend.
 
 ### 12.2 HTTP Endpoints
 
@@ -1017,6 +1017,41 @@ Ekspektasi 9 container `(healthy)`: postgres, redis, authentik-server, authentik
 - [ ] internal: kirim dari user mail ke admin@
 - [ ] external: kirim ke Gmail → cek header: `DKIM-Signature` ada, `dkim=pass`, `spf=pass`, `dmarc=pass`
 - [ ] balas dari Gmail → masuk inbox webmail
+
+---
+
+## Bagian 12c — Portal CloudSuite
+
+### Prasyarat
+
+- Authentik provider `portal` (PK 7) + application slug `portal` sudah dibuat (Bagian 12b / Authentik admin).
+- `/opt/cloudsuite/.env` punya 5 var `PORTAL_*` (URL, CLIENT_ID, CLIENT_SECRET, ISSUER, AUTH_SECRET).
+  - **ISSUER wajib trailing slash**: `https://auth.idchsuite.my.id/application/o/portal/` — tanpa slash, backend Go crash loop `issuer did not match`.
+- Source di `/opt/cloudsuite/portal/{backend,frontend}/` (sync dari repo).
+- DNS `portal.<domain>` → Cloudflare proxied ke VPS.
+
+### Deploy
+
+    cd /opt/cloudsuite/infra/docker
+    docker compose --env-file /opt/cloudsuite/.env up -d --build portal-backend portal-frontend
+
+Build ~5-10 menit (Go + Next.js). Frontend pakai `pnpm install --frozen-lockfile --dangerously-allow-all-builds` (pnpm v12 supply-chain guard: `unrs-resolver` dep `eslint-config-next` butuh build script).
+
+### Verify
+
+    docker compose --env-file /opt/cloudsuite/.env ps portal-backend portal-frontend   # keduanya (healthy)
+    docker logs cloudsuite-portal-backend --tail 10   # "listening" addr :8080
+    docker logs cloudsuite-portal-frontend --tail 10  # Next.js Ready, tanpa UntrustedHost
+    curl -sk https://portal.<domain>/api/health        # {"status":"ok"}
+    curl -sk https://portal.<domain>/ -o /dev/null -w "%{http_code}\n"  # 200/302
+
+SSO manual test: buka portal → "Sign in with CloudSuite" → login Authentik → dashboard + 3 kartu (Mail, Drive, ERP).
+
+### Troubleshooting cepat
+
+- Backend restart loop `issuer did not match` → cek `PORTAL_AUTHENTIK_ISSUER` trailing slash.
+- Frontend `[auth][error] UntrustedHost` → pastikan env `AUTH_TRUST_HOST: "true"` di service portal-frontend (compose).
+- `ERR_PNPM_IGNORED_BUILDS` saat build → pastikan flag `--dangerously-allow-all-builds` di Dockerfile frontend.
 
 ---
 

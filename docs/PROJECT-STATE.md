@@ -1,7 +1,7 @@
 # CloudSuite — Project State
 
 > Snapshot status project. Update setiap sprint selesai.
-> Terakhir update: 2026-09-10 (Sprint 0.10a).
+> Terakhir update: 2026-09-14 (Sprint 1.0 — Portal deploy).
 
 ## 1. Overview
 
@@ -28,7 +28,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - [x] 0.9f — Project state + odoo notes
 - [x] 0.10a — Stalwart Mail Server + DNS
 - [x] 0.10b — Bulwark webmail + SSO (⏳ pending DNS admin)
-- [ ] 1 — Portal CloudSuite
+- [x] 1.0 — Portal CloudSuite (deploy; test SSO pending admin)
 
 ## 3. Keputusan yang Dikunci
 
@@ -49,12 +49,12 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 | Authentik (IdP) | auth.idchsuite.my.id | — | ✅ |
 | Nextcloud (Drive) | drive.idchsuite.my.id | ✅ | ✅ |
 | Odoo (ERP) | erp.idchsuite.my.id | ✅ | ✅ |
-| Stalwart + Bulwark (Mail) | mail.idchsuite.my.id | webmail.idchsuite.my.id | ⚠️ pending DNS
-| Portal CloudSuite | — | TODO | ⬜ |
+| Stalwart + Bulwark (Mail) | mail.idchsuite.my.id, webmail.idchsuite.my.id | ✅ | ✅
+| Portal CloudSuite | portal.idchsuite.my.id | ✅ (Authentik) | ✅ deploy, ⏳ test SSO admin |
 
 ## 5. Kontainer
 
-8 container healthy:
+11 container healthy:
 
 - cloudsuite-postgres
 - cloudsuite-redis
@@ -64,11 +64,13 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - cloudsuite-nextcloud
 - cloudsuite-odoo
 - cloudsuite-stalwart
+- cloudsuite-portal-backend
+- cloudsuite-portal-frontend
 
 ## 6. Next Action
 
-- Sprint 0.10 — Deploy Stalwart + Bulwark + SSO
-- Sprint 1 — Portal CloudSuite
+- Test SSO Portal (admin) — https://portal.idchsuite.my.id
+- Sprint 1.1 — Portal: polish UI + fitur kartu layanan
 
 ## 7. Referensi
 
