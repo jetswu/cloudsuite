@@ -36,3 +36,9 @@ Kalau `/api/auth/` tidak di-split ke frontend, semua endpoint NextAuth 404 (defa
 
 ## Troubleshooting
 Lihat TROUBLESHOOTING.md.
+
+### 502 saat callback SSO (session cookie besar)
+- Gejala: login Authentik sukses, callback `/api/auth/callback/authentik` → 502 Cloudflare.
+- Log nginx: `upstream sent too big header while reading response header from upstream`.
+- Root cause: NextAuth set cookie session JWT (berisi accessToken Authentik) > proxy_buffer_size default nginx.
+- Fix (sudah diterapkan, commit `93be5c7`): `proxy_buffer_size 16k; proxy_buffers 8 16k; proxy_busy_buffers_size 24k;` di server block portal.conf.
