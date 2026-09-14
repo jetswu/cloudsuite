@@ -56,3 +56,10 @@ Lihat TROUBLESHOOTING.md.
 - Root cause: provider OIDC `portal` (PK 7) tidak punya `signing_key` → go-oidc verifier tanpa key → semua token ditolak 401.
 - Fix: PATCH `signing_key` provider 7 = `38b70fc0-69b8-44fa-b959-ad02ca4197da` (reuse cert existing, sama dengan provider stalwart-mail/Nextcloud/Odoo).
 - Verify: `curl -s https://auth.idchsuite.my.id/application/o/portal/jwks/` → `{"keys":[{"kty":"RSA","alg":"RS256",...}]}`.
+
+## Redirect Layanan (Sprint 1.1)
+- Mail → https://webmail.idchsuite.my.id
+- Drive → https://drive.idchsuite.my.id
+- ERP → https://erp.idchsuite.my.id
+- Buka di tab baru (`target="_blank"`, `rel="noopener noreferrer"`).
+- `ServiceCard` = wrap `<Link>` seluruh card + `cursor-pointer` + hover border/bg.
