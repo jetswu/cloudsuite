@@ -1882,3 +1882,22 @@ Dokumen detail di repo `docs/`: `DEPLOYMENT.md` (deploy per-service),
 3. Letak UI setting `default_token_duration` (staging via API PATCH)
 4. Alur first-run DB Odoo persis
 5. Backup procedure lengkap (belum dibuat — TODO besar)
+
+## Lampiran D — Script Ops (`infra/scripts/`)
+
+Script ops live ada di `/opt/cloudsuite/infra/scripts/` (VPS) — salinan di repo
+`infra/scripts/` untuk reproducibility. Detail fungsi + cara pakai + cron: lihat
+`infra/scripts/README.md`.
+
+| Script | Fungsi | Cron (VPS hermes) |
+|---|---|---|
+| `check-services.sh` | Cek container 6 service jalan/tidak | — (manual) |
+| `check-storage.sh` | Warning disk `/` > 80% | — (manual) |
+| `reminder-mail-cert.sh` | WARNING renewal manual `mail.pem` < 30 hari | `0 9 * * *` |
+
+Catatan deploy baru: copy script ke `/opt/cloudsuite/infra/scripts/`, `chmod +x`,
+pasang cron hermes manual (`crontab -e`, lihat README).
+
+---
+
+*Di-update Sprint 0.10n (2026-09-14): script ops di-commit ke repo (Lampiran D).*
