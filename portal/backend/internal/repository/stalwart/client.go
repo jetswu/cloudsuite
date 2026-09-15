@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -95,12 +97,48 @@ func (c *Client) RegisterDomain(ctx context.Context, name string) (Domain, error
 		return Domain{}, fmt.Errorf("create domain %q: no id in response", name)
 	}
 
-	// 2. Read back the full object (dnsZoneFile).
-	d, err := c.getDomain(ctx, stalwartID)
+	// 2. Stalwart generates DKIM keys asynchronously, so the zone file may
+	//    not yet contain the *_domainkey records right after the domain is
+	//    created. Poll getDomain until the DKIM records appear (or timeout),
+	//    so the portal does not persist an empty DKIM set. On timeout the
+	//    domain is still returned — creation must not fail because of a slow
+	//    DKIM generation.
+	d, err := c.waitForDKIM(ctx, stalwartID)
 	if err != nil {
 		return Domain{}, fmt.Errorf("read created domain: %w", err)
 	}
 	return d, nil
+}
+
+// waitForDKIM polls the created domain until its dnsZoneFile contains the
+// DKIM selector records. Stalwart writes those asynchronously (Automatic DKIM
+// management), so the first getDomain may return a zone without them. It
+// gives up after ~10s (5 attempts, 2s apart) and returns the last zone seen.
+func (c *Client) waitForDKIM(ctx context.Context, id string) (Domain, error) {
+	const (
+		maxAttempts = 5
+		delay       = 2 * time.Second
+	)
+
+	var (
+		last Domain
+		err  error
+	)
+	for i := 0; i < maxAttempts; i++ {
+		last, err = c.getDomain(ctx, id)
+		if err != nil {
+			return Domain{}, err
+		}
+		if strings.Contains(last.DNSZoneFile, "_domainkey") {
+			return last, nil
+		}
+		time.Sleep(delay)
+	}
+
+	log.Warn().
+		Str("domain_id", id).
+		Msg("DKIM records did not appear in zone file after polling; proceeding with last zone (may be empty)")
+	return last, nil
 }
 
 // ListDomains returns all Stalwart domains (id + name).

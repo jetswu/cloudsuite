@@ -35,8 +35,8 @@ type StalwartClient interface {
 
 // DomainService orchestrates domain onboarding.
 type DomainService struct {
-	domains repository.DomainRepository
-	records repository.DNSRecordRepository
+	domains  repository.DomainRepository
+	records  repository.DNSRecordRepository
 	stalwart StalwartClient
 	dns      *DNSChecker
 }
@@ -158,7 +158,7 @@ func (s *DomainService) VerifyDomain(ctx context.Context, id string) (*domain.Do
 
 	allVerified := true
 	for _, rec := range records {
-		status, errMsg := s.dns.VerifyRecord(ctx, rec)
+		status, errMsg := s.dns.VerifyRecord(ctx, rec, d.Name)
 		if err := s.records.UpdateStatus(ctx, rec.ID, status, errMsg); err != nil {
 			return nil, fmt.Errorf("update record %s status: %w", rec.Name, err)
 		}
