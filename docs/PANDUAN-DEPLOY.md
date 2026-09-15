@@ -1106,6 +1106,48 @@ SSO manual test: buka portal → "Sign in with CloudSuite" → login Authentik �
 
 ---
 
+
+## Bagian 12e — DNS Wizard + Domain Onboarding (Sprint 1.3)
+
+### Prasyarat
+
+- Backend + frontend Sprint 1.3 (commit `f2c46ae`) sudah terdeploy (Bagian 12d).
+- DB `portal` + migration `00001_create_domains.sql`, `00002_create_dns_records.sql` (otomatis di startup backend via goose).
+- `/opt/cloudsuite/.env` punya `STALWART_API_URL`, `STALWART_API_KEY`, `PORTAL_DB_*` (host/port/name/user/password).
+
+### Deploy env
+
+    STALWART_API_URL=http://cloudsuite-stalwart:8080
+    PORTAL_DB_HOST=postgres
+    PORTAL_DB_PORT=5432
+    PORTAL_DB_NAME=portal
+    PORTAL_DB_USER=cloudsuite
+    PORTAL_DB_PASSWORD=${POSTGRES_PASSWORD}
+
+Compose `portal-backend` harus meneruskan ke-7 env di atas.
+
+### Migration
+
+- Otomatis di startup backend (`goose`), log: `goose: successfully migrated database to version: 2`.
+- Verify: `docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c "\dt"` -> `domains`, `dns_records`, `goose_db_version`.
+
+### Akses & otorisasi
+
+- URL: `https://portal.<domain>/admin/domains`.
+- Superadmin only (group `cloudsuite-superadmin`); non-superadmin -> redirect `/dashboard`, API -> 403.
+
+### Smoke test API
+
+    # Health
+    docker exec cloudsuite-portal-backend wget -qO- http://localhost:8080/api/health
+    # -> {"status":"ok"}
+
+    # Tanpa token -> 401
+    curl -sk https://portal.<domain>/api/admin/domains -w 
+%{http_code}
+
+
+---
 ## Bagian 13 — Backup (Opsional)
 
 Status: [TBC] — prosedur backup lengkap belum ada (TODO staging).

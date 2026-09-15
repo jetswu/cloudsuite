@@ -576,3 +576,22 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 ### Verify
 - `curl -s -D - -X POST .../application/o/token/` dengan `Origin: https://webmail.idchsuite.my.id` → `access-control-allow-origin: https://webmail.idchsuite.my.id`.
 - Discovery endpoint `.well-known/openid-configuration` → header CORS yang sama.
+
+
+## LayoutProps tidak terdefinisi (Next.js)
+### Gejala
+- Typecheck / `next build` gagal: `TS2304: Cannot find name LayoutProps` di `app/layout.tsx`.
+### Root Cause
+- `LayoutProps<"/">` berasal dari experimental Next.js typed-routes feature yang belum diaktifkan / dihapus.
+### Fix
+- Ganti signature jadi `{ children: React.ReactNode }` + import type `ReactNode`.
+### Tech debt
+- Cek experimental feature di `next.config.ts`; hapus referensi `LayoutProps` kalau typed-routes tidak dipakai.
+
+## Portal backend crash: `sql: unknown driver "pgx"`
+### Gejala
+- Container `cloudsuite-portal-backend` restart loop; log: `sql: unknown driver "pgx" (forgotten import?)`.
+### Root Cause
+- Goose v3 memakai `database/sql`; driver `pgx` belum diregister karena import blank `_ "github.com/jackc/pgx/v5/stdlib"` hilang.
+### Fix
+- Tambah `import _ "github.com/jackc/pgx/v5/stdlib"` lalu `goose.OpenDBWithDriver("pgx", pool.Config().ConnString())`.

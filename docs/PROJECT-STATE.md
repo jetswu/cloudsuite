@@ -1,7 +1,7 @@
 # CloudSuite — Project State
 
 > Snapshot status project. Update setiap sprint selesai.
-> Terakhir update: 2026-09-15 (Sprint 1.2b — Admin Console full CRUD + group assignment).
+> Terakhir update: 2026-09-15 (Sprint 1.3 — DNS Wizard + Domain Onboarding).
 
 ## 1. Overview
 
@@ -32,6 +32,9 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - [x] 1.1 — Portal: polish UI + kartu layanan
 - [x] 1.2 — Admin Console (CRUD user + group, superadmin only)
 - [x] 1.2b — Admin Console full CRUD + group assignment + nested null fix
+- [x] 1.2c — Admin add user + password handling (set_password terpisah)
+- [x] 1.2d — Implicit consent flow OIDC (login tanpa consent screen)
+- [x] 1.3 — DNS Wizard + Domain Onboarding (superadmin)
 
 ## 3. Keputusan yang Dikunci
 

@@ -102,7 +102,7 @@ Phase 2: SLO native semua layanan.
 
 ### 5.5 Onboarding & Tenant
 - Sales-led onboarding (via CRM IDCloudHost)
-- DNS Wizard 4 langkah: MX → SPF → DKIM → DMARC
+- DNS Wizard 4 langkah: MX → SPF → DKIM → DMARC  **(✅ Sprint 1.3 — `/admin/domains`, superadmin)**
 - Multi-domain per paket
 
 ### 5.6 Service Integration

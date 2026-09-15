@@ -106,3 +106,13 @@ Lihat TROUBLESHOOTING.md.
 - Berlaku juga untuk provider own-app lain: Nextcloud (PK 2), Odoo (PK 3), Stalwart Mail (PK 6).
 - `redirect_uris`/`grant_types`/`property_mappings` TIDAK berubah. Detail: `docs/authentik-setup.md` → "Sprint 1.2d Implicit Consent Flow".
 
+
+
+## DNS Wizard + Domain Onboarding (Sprint 1.3)
+- URL: `/admin/domains` (CRUD list) + `/admin/domains/[id]/setup` (wizard 4 langkah).
+- Akses: superadmin (group `cloudsuite-superadmin`).
+- Fitur: CRUD domain + wizard MX -> SPF -> DKIM -> DMARC (copy + verify per record).
+- Backend: DB `portal` (PostgreSQL), Stalwart JMAP client (`x:Domain/set|get|query|destroy` via `POST /jmap`).
+- Verify: DNS lookup via Go `net.LookupMX` / `net.LookupTXT`.
+- Register domain ke Stalwart saat create (single-tenant, `tenant_id` NULL).
+- Wizard reusable component -> siap Phase 2 multi-tenant.
