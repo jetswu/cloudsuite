@@ -80,3 +80,15 @@ Lihat TROUBLESHOOTING.md.
 - Env backend baru: `AUTHENTIK_API_URL` (base Authentik, contoh `http://authentik-server:9000`), `AUTHENTIK_API_TOKEN` (token API admin).
 - Tenant admin UI (per-tenant) akan di `/manage` (Phase 2) — BUKAN bagian Sprint 1.2.
 
+## Admin Console Full CRUD + Group Assignment (Sprint 1.2b)
+- Fitur: full CRUD end-to-end user, group, dan role (bukan hanya create/delete). User form dialog (create + edit), group form dialog (create + edit), search + filter status.
+- Group assignment: `PUT /api/admin/users/{id}/groups` (ganti membership penuh via `SetUserGroups`), `GET/POST/DELETE /api/admin/groups/{uuid}/members` (kelola anggota group via `ListGroupMembers`/`AddGroupMember`/`RemoveGroupMember`).
+- Redirect fix: menu user (dropdown) menampilkan link "Admin" hanya untuk superadmin (`isSuperAdmin` prop dari `groups` session); `admin-shell` mengirim `isSuperAdmin` sehingga menu konsisten.
+- Nested null fix (Fase F): Authentik serialize relasi nested yang tidak di-populate sebagai JSON `null` → Go decode jadi slice `nil` → re-marshal jadi `null`. Fix double-safety:
+  1. Backend `repository/authentik/authentik.go`: helper `normalizeUser`/`normalizeGroup`/`normalizeUsers`/`normalizeGroups` memastikan semua slice read-model non-nil `[]` (dipanggil di `ListUsers`, `ListGroups`, `CreateUser`, `CreateGroup`, `UpdateUser`, `UpdateGroup`, `ListGroupMembers`).
+  2. Frontend: guard `(u.groups_obj ?? [])` di `users-manager.tsx`, `(g.users ?? [])` di `groups-manager.tsx`.
+- Domain: `User.GroupsObj []GroupRef`, `Group.UsersObj []User`, `SetGroupsRequest`, `MemberRequest` — semua slice field read-model TANPA `omitempty` agar selalu serialize sebagai array.
+- Endpoint backend tambahan: `PUT /users/{id}/groups`, `GET /groups/{uuid}/members`, `POST /groups/{uuid}/members`, `DELETE /groups/{uuid}/members/{pk}`.
+- Komponen frontend baru: `user-form-dialog.tsx`, `group-members-dialog.tsx`, `confirm-dialog.tsx`; hook `use-groups.ts`; shadcn `dialog`, `alert-dialog`, `checkbox`, `popover`.
+- Cloudflare 1010 (Fase G): hanya memblokir fingerprint Python `urllib` (Bot Fight Mode), curl default UA dan browser UA keduanya HTTP 200 — tidak ada perubahan konfigurasi Cloudflare.
+

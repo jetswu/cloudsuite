@@ -1,7 +1,7 @@
 # CloudSuite — Project State
 
 > Snapshot status project. Update setiap sprint selesai.
-> Terakhir update: 2026-09-14 (Sprint 1.2 — Admin Console).
+> Terakhir update: 2026-09-15 (Sprint 1.2b — Admin Console full CRUD + group assignment).
 
 ## 1. Overview
 
@@ -31,6 +31,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - [x] 1.0 — Portal CloudSuite (deploy; test SSO pending admin)
 - [x] 1.1 — Portal: polish UI + kartu layanan
 - [x] 1.2 — Admin Console (CRUD user + group, superadmin only)
+- [x] 1.2b — Admin Console full CRUD + group assignment + nested null fix
 
 ## 3. Keputusan yang Dikunci
 
@@ -51,8 +52,8 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 | Authentik (IdP) | auth.idchsuite.my.id | — | ✅ |
 | Nextcloud (Drive) | drive.idchsuite.my.id | ✅ | ✅ |
 | Odoo (ERP) | erp.idchsuite.my.id | ✅ | ✅ |
-| Stalwart + Bulwark (Mail) | mail.idchsuite.my.id, webmail.idchsuite.my.id | ✅ | ✅
-| Portal CloudSuite | portal.idchsuite.my.id | ✅ (Authentik) | ✅ deploy + SSO + admin console |
+| Stalwart + Bulwark (Mail) | mail.idchsuite.my.id, webmail.idchsuite.my.id | ✅ | ✅ |
+| Portal CloudSuite | portal.idchsuite.my.id | ✅ (Authentik) | ✅ deploy + SSO + admin console full CRUD |
 
 ## 5. Kontainer
 
