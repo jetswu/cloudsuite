@@ -66,7 +66,7 @@ func (c *Client) ListUsers(ctx context.Context) ([]domain.User, error) {
 	if err := c.do(ctx, http.MethodGet, pathUsers, nil, &out); err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
-	return out.Results, nil
+	return normalizeUsers(out.Results), nil
 }
 
 func (c *Client) ListGroups(ctx context.Context) ([]domain.Group, error) {
@@ -74,7 +74,7 @@ func (c *Client) ListGroups(ctx context.Context) ([]domain.Group, error) {
 	if err := c.do(ctx, http.MethodGet, pathGroups, nil, &out); err != nil {
 		return nil, fmt.Errorf("list groups: %w", err)
 	}
-	return out.Results, nil
+	return normalizeGroups(out.Results), nil
 }
 
 func (c *Client) ListRoles(ctx context.Context) ([]domain.Role, error) {
@@ -90,6 +90,7 @@ func (c *Client) CreateUser(ctx context.Context, req domain.UserRequest) (domain
 	if err := c.do(ctx, http.MethodPost, pathUsers, req, &out); err != nil {
 		return out, fmt.Errorf("create user: %w", err)
 	}
+	normalizeUser(&out)
 	return out, nil
 }
 
@@ -98,6 +99,7 @@ func (c *Client) CreateGroup(ctx context.Context, req domain.GroupRequest) (doma
 	if err := c.do(ctx, http.MethodPost, pathGroups, req, &out); err != nil {
 		return out, fmt.Errorf("create group: %w", err)
 	}
+	normalizeGroup(&out)
 	return out, nil
 }
 
@@ -115,6 +117,7 @@ func (c *Client) UpdateUser(ctx context.Context, id int, req domain.UserRequest)
 	if err := c.do(ctx, http.MethodPut, path, req, &out); err != nil {
 		return out, fmt.Errorf("update user %d: %w", id, err)
 	}
+	normalizeUser(&out)
 	return out, nil
 }
 
@@ -124,6 +127,7 @@ func (c *Client) UpdateGroup(ctx context.Context, uuid string, req domain.GroupR
 	if err := c.do(ctx, http.MethodPut, path, req, &out); err != nil {
 		return out, fmt.Errorf("update group %s: %w", uuid, err)
 	}
+	normalizeGroup(&out)
 	return out, nil
 }
 
@@ -158,6 +162,60 @@ func (c *Client) DeleteRole(ctx context.Context, uuid string) error {
 		return fmt.Errorf("delete role %s: %w", uuid, err)
 	}
 	return nil
+}
+
+// normalizeUser ensures every slice field on the read model is a non-nil
+// empty slice. Authentik serializes unpopulated nested relations as JSON null,
+// which Go decodes to a nil slice and re-marshals to null; the frontend
+// expects arrays, so we normalize to [] for consistent output.
+func normalizeUser(u *domain.User) {
+	if u.Groups == nil {
+		u.Groups = []string{}
+	}
+	if u.GroupsObj == nil {
+		u.GroupsObj = []domain.GroupRef{}
+	}
+	if u.Roles == nil {
+		u.Roles = []string{}
+	}
+}
+
+func normalizeUsers(users []domain.User) []domain.User {
+	if users == nil {
+		users = []domain.User{}
+	}
+	for i := range users {
+		normalizeUser(&users[i])
+	}
+	return users
+}
+
+func normalizeGroup(g *domain.Group) {
+	if g.Users == nil {
+		g.Users = []int{}
+	}
+	if g.UsersObj == nil {
+		g.UsersObj = []domain.User{}
+	}
+	if g.Roles == nil {
+		g.Roles = []string{}
+	}
+	if g.Parents == nil {
+		g.Parents = []string{}
+	}
+	for i := range g.UsersObj {
+		normalizeUser(&g.UsersObj[i])
+	}
+}
+
+func normalizeGroups(groups []domain.Group) []domain.Group {
+	if groups == nil {
+		groups = []domain.Group{}
+	}
+	for i := range groups {
+		normalizeGroup(&groups[i])
+	}
+	return groups
 }
 
 // apiError is the Authentik error envelope.
