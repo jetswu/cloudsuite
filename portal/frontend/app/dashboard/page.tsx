@@ -4,6 +4,8 @@ import { ServiceCard } from "@/components/service-card";
 import { UserMenu } from "@/components/user-menu";
 import { MeStatus } from "@/components/me-status";
 
+const SUPER_ADMIN_GROUP = "cloudsuite-superadmin";
+
 const services = [
   {
     icon: Mail,
@@ -70,6 +72,7 @@ export default async function DashboardPage() {
           <UserMenu
             name={session.user?.name}
             email={session.user?.email}
+            isSuperAdmin={session.user?.groups?.includes(SUPER_ADMIN_GROUP) ?? false}
             signOutAction={signOutAction}
           />
         </div>

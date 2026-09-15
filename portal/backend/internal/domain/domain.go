@@ -65,3 +65,14 @@ type GroupRequest struct {
 type RoleRequest struct {
 	Name string `json:"name"`
 }
+
+// SetGroupsRequest replaces the full group membership of a user.
+// Groups is NOT omitempty: an empty slice clears all memberships.
+type SetGroupsRequest struct {
+	Groups []string `json:"groups"`
+}
+
+// MemberRequest adds/removes a single user from a group by PK.
+type MemberRequest struct {
+	PK int `json:"pk"`
+}

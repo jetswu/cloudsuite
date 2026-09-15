@@ -75,7 +75,12 @@ export function AdminShell({
             <span className="text-sm font-semibold">CloudSuite</span>
           </div>
           <div className="hidden md:block" />
-          <UserMenu name={name} email={email} signOutAction={signOutAction} />
+          <UserMenu
+            name={name}
+            email={email}
+            isSuperAdmin
+            signOutAction={signOutAction}
+          />
         </header>
 
         <main className="flex-1 px-4 py-8 md:px-6">{children}</main>

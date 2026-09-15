@@ -1,5 +1,10 @@
 // Types mirror the Go backend internal/domain payloads 1:1.
 
+export type GroupRef = {
+  pk: string
+  name: string
+}
+
 export type AdminUser = {
   pk: number
   username: string
@@ -10,6 +15,7 @@ export type AdminUser = {
   last_login: string | null
   date_joined: string
   groups: string[]
+  groups_obj: GroupRef[]
   roles: string[]
 }
 
@@ -18,6 +24,7 @@ export type AdminGroup = {
   name: string
   is_superuser: boolean
   users: number[]
+  users_obj: AdminUser[]
   roles: string[]
   parents: string[]
 }
@@ -93,6 +100,12 @@ export const adminApi = {
   deleteUser: (token: string, id: number) =>
     request<void>(`/users/${id}`, token, { method: "DELETE" }),
 
+  setUserGroups: (token: string, id: number, groupUUIDs: string[]) =>
+    request<void>(`/users/${id}/groups`, token, {
+      method: "PUT",
+      body: JSON.stringify({ groups: groupUUIDs }),
+    }),
+
   listGroups: (token: string) => request<AdminGroup[]>("/groups", token),
 
   createGroup: (token: string, body: GroupRequest) =>
@@ -109,6 +122,20 @@ export const adminApi = {
 
   deleteGroup: (token: string, uuid: string) =>
     request<void>(`/groups/${uuid}`, token, { method: "DELETE" }),
+
+  listGroupMembers: (token: string, uuid: string) =>
+    request<AdminUser[]>(`/groups/${uuid}/members`, token),
+
+  addGroupMember: (token: string, uuid: string, userPK: number) =>
+    request<void>(`/groups/${uuid}/members`, token, {
+      method: "POST",
+      body: JSON.stringify({ pk: userPK }),
+    }),
+
+  removeGroupMember: (token: string, uuid: string, userPK: number) =>
+    request<void>(`/groups/${uuid}/members/${userPK}`, token, {
+      method: "DELETE",
+    }),
 
   listRoles: (token: string) => request<AdminRole[]>("/roles", token),
 

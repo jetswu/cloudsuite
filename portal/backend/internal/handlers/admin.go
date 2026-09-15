@@ -54,11 +54,15 @@ func (a *AdminHandler) Routes(r chi.Router, requireAuth func(http.Handler) http.
 		admin.Post("/users", a.createUser)
 		admin.Put("/users/{id}", a.updateUser)
 		admin.Delete("/users/{id}", a.deleteUser)
+		admin.Put("/users/{id}/groups", a.setUserGroups)
 
 		admin.Get("/groups", a.listGroups)
 		admin.Post("/groups", a.createGroup)
 		admin.Put("/groups/{uuid}", a.updateGroup)
 		admin.Delete("/groups/{uuid}", a.deleteGroup)
+		admin.Get("/groups/{uuid}/members", a.listGroupMembers)
+		admin.Post("/groups/{uuid}/members", a.addGroupMember)
+		admin.Delete("/groups/{uuid}/members/{pk}", a.removeGroupMember)
 
 		admin.Get("/roles", a.listRoles)
 		admin.Post("/roles", a.createRole)
@@ -119,6 +123,72 @@ func (a *AdminHandler) deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.repo.DeleteUser(r.Context(), id); err != nil {
 		writeError(w, http.StatusBadGateway, "delete user", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *AdminHandler) setUserGroups(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
+		return
+	}
+	var req domain.SetGroupsRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.Groups == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "groups is required (send [] to clear)"})
+		return
+	}
+	if err := a.repo.SetUserGroups(r.Context(), id, req.Groups); err != nil {
+		writeError(w, http.StatusBadGateway, "set user groups", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *AdminHandler) listGroupMembers(w http.ResponseWriter, r *http.Request) {
+	uuid := chi.URLParam(r, "uuid")
+	members, err := a.repo.ListGroupMembers(r.Context(), uuid)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "list group members", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, members)
+}
+
+func (a *AdminHandler) addGroupMember(w http.ResponseWriter, r *http.Request) {
+	uuid := chi.URLParam(r, "uuid")
+	var req domain.MemberRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.PK <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pk must be a positive integer"})
+		return
+	}
+	if err := a.repo.AddGroupMember(r.Context(), uuid, req.PK); err != nil {
+		writeError(w, http.StatusBadGateway, "add group member", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *AdminHandler) removeGroupMember(w http.ResponseWriter, r *http.Request) {
+	uuid := chi.URLParam(r, "uuid")
+	pk, err := strconv.Atoi(chi.URLParam(r, "pk"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user pk"})
+		return
+	}
+	if pk <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pk must be a positive integer"})
+		return
+	}
+	if err := a.repo.RemoveGroupMember(r.Context(), uuid, pk); err != nil {
+		writeError(w, http.StatusBadGateway, "remove group member", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

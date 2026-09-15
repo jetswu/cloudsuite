@@ -37,6 +37,10 @@ type Repository interface {
 	DeleteUser(ctx context.Context, id int) error
 	DeleteGroup(ctx context.Context, uuid string) error
 	DeleteRole(ctx context.Context, uuid string) error
+	SetUserGroups(ctx context.Context, id int, groupUUIDs []string) error
+	ListGroupMembers(ctx context.Context, uuid string) ([]domain.User, error)
+	AddGroupMember(ctx context.Context, uuid string, userPK int) error
+	RemoveGroupMember(ctx context.Context, uuid string, userPK int) error
 }
 
 // Client is the Authentik API client. It is safe for concurrent use.
@@ -160,6 +164,47 @@ func (c *Client) DeleteRole(ctx context.Context, uuid string) error {
 	path := pathRoles + uuid + "/"
 	if err := c.do(ctx, http.MethodDelete, path, nil, nil); err != nil {
 		return fmt.Errorf("delete role %s: %w", uuid, err)
+	}
+	return nil
+}
+
+// SetUserGroups replaces the full group membership of a user. An empty slice
+// clears all memberships (Authentik treats a present "groups" field as the
+// complete desired set).
+func (c *Client) SetUserGroups(ctx context.Context, id int, groupUUIDs []string) error {
+	path := pathUsers + strconv.Itoa(id) + "/"
+	body := domain.SetGroupsRequest{Groups: groupUUIDs}
+	if err := c.do(ctx, http.MethodPatch, path, body, nil); err != nil {
+		return fmt.Errorf("set user %d groups: %w", id, err)
+	}
+	return nil
+}
+
+// ListGroupMembers returns the users that belong to a group, decoded from the
+// group serializer's users_obj field.
+func (c *Client) ListGroupMembers(ctx context.Context, uuid string) ([]domain.User, error) {
+	var group domain.Group
+	path := pathGroups + uuid + "/"
+	if err := c.do(ctx, http.MethodGet, path, nil, &group); err != nil {
+		return nil, fmt.Errorf("list group %s members: %w", uuid, err)
+	}
+	return normalizeUsers(group.UsersObj), nil
+}
+
+func (c *Client) AddGroupMember(ctx context.Context, uuid string, userPK int) error {
+	path := pathGroups + uuid + "/add_user/"
+	body := domain.MemberRequest{PK: userPK}
+	if err := c.do(ctx, http.MethodPost, path, body, nil); err != nil {
+		return fmt.Errorf("add user %d to group %s: %w", userPK, uuid, err)
+	}
+	return nil
+}
+
+func (c *Client) RemoveGroupMember(ctx context.Context, uuid string, userPK int) error {
+	path := pathGroups + uuid + "/remove_user/"
+	body := domain.MemberRequest{PK: userPK}
+	if err := c.do(ctx, http.MethodPost, path, body, nil); err != nil {
+		return fmt.Errorf("remove user %d from group %s: %w", userPK, uuid, err)
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { LogOut, UserRound } from "lucide-react";
+import Link from "next/link";
+import { LogOut, Shield, UserRound } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,10 +16,16 @@ import { ThemeToggle } from "@/components/theme-toggle";
 type UserMenuProps = {
   name?: string | null;
   email?: string | null;
+  isSuperAdmin?: boolean;
   signOutAction: () => Promise<void>;
 };
 
-export function UserMenu({ name, email, signOutAction }: UserMenuProps) {
+export function UserMenu({
+  name,
+  email,
+  isSuperAdmin = false,
+  signOutAction,
+}: UserMenuProps) {
   const displayName = name || email || "Pengguna";
   const initial = (displayName[0] || "?").toUpperCase();
 
@@ -48,6 +55,14 @@ export function UserMenu({ name, email, signOutAction }: UserMenuProps) {
             Profil
           </button>
         </DropdownMenuItem>
+        {isSuperAdmin ? (
+          <DropdownMenuItem asChild>
+            <Link href="/admin/users" className="cursor-pointer">
+              <Shield className="size-4" aria-hidden />
+              Admin
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem asChild>
           <ThemeToggle />
         </DropdownMenuItem>
