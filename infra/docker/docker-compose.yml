@@ -288,6 +288,13 @@ services:
       CORS_ALLOWED_ORIGINS: ${PORTAL_URL}
       LOG_LEVEL: info
       TZ: Asia/Jakarta
+      STALWART_API_URL: ${STALWART_API_URL}
+      STALWART_API_KEY: ${STALWART_API_KEY}
+      PORTAL_DB_HOST: ${PORTAL_DB_HOST}
+      PORTAL_DB_PORT: ${PORTAL_DB_PORT}
+      PORTAL_DB_NAME: ${PORTAL_DB_NAME}
+      PORTAL_DB_USER: ${PORTAL_DB_USER}
+      PORTAL_DB_PASSWORD: ${PORTAL_DB_PASSWORD}
     networks:
       - cloudsuite-net
     expose:
