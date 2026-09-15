@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,15 @@ import (
 	"github.com/jetswu/cloudsuite/portal/backend/internal/domain"
 	"github.com/jetswu/cloudsuite/portal/backend/internal/repository/authentik"
 )
+
+// emailRe is a deliberately simple email shape check: local@domain.tld. It
+// matches the frontend validation and exists to catch empty or malformed
+// addresses before they reach Authentik and break SSO login later.
+var emailRe = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+
+func validEmail(v string) bool {
+	return emailRe.MatchString(strings.TrimSpace(v))
+}
 
 // AdminHandler serves the /api/admin CRUD endpoints for users, groups, roles.
 // It depends only on the authentik.Repository interface.
@@ -88,6 +98,10 @@ func (a *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.Username) == "" || strings.TrimSpace(req.Name) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username and name are required"})
+		return
+	}
+	if !validEmail(req.Email) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "email is required"})
 		return
 	}
 	if err := validatePassword(req.Password); err != nil {

@@ -48,6 +48,14 @@ function passwordValid(pw: string): boolean {
   return hasLetter && hasDigit
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function emailValid(value: string): boolean {
+  return EMAIL_RE.test(value.trim())
+}
+
+const EMAIL_DOMAIN = "idchsuite.my.id"
+
 export function UserFormDialog({
   open,
   onOpenChange,
@@ -90,6 +98,14 @@ export function UserFormDialog({
     )
   }
 
+  function handleUsernameBlur() {
+    const u = username.trim()
+    if (!u || email.trim()) return
+    setEmail(`${u}@${EMAIL_DOMAIN}`)
+  }
+
+  const emailError = emailValid(email) ? null : "Email wajib diisi dan harus valid"
+
   async function copyPassword() {
     try {
       await navigator.clipboard.writeText(password)
@@ -103,6 +119,10 @@ export function UserFormDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!token) return
+    if (!emailValid(email)) {
+      setError("Email wajib diisi dan harus valid")
+      return
+    }
     if (!isEdit && !passwordValid(password)) {
       setError("Password minimal 8 karakter dan mengandung huruf + angka.")
       return
@@ -157,6 +177,7 @@ export function UserFormDialog({
               id="user-username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              onBlur={handleUsernameBlur}
               required
             />
           </div>
@@ -176,7 +197,11 @@ export function UserFormDialog({
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              required
             />
+            {emailError ? (
+              <p className="text-xs text-destructive">{emailError}</p>
+            ) : null}
           </div>
 
           {!isEdit ? (
@@ -334,7 +359,7 @@ export function UserFormDialog({
             >
               Batal
             </Button>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || emailError !== null}>
               {saving ? <Loader2 className="size-4 animate-spin" /> : null}
               {isEdit ? "Simpan" : "Tambah"}
             </Button>
