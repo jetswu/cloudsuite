@@ -29,6 +29,7 @@ type Repository interface {
 	ListGroups(ctx context.Context) ([]domain.Group, error)
 	ListRoles(ctx context.Context) ([]domain.Role, error)
 	CreateUser(ctx context.Context, req domain.UserRequest) (domain.User, error)
+	SetUserPassword(ctx context.Context, id int, password string) error
 	CreateGroup(ctx context.Context, req domain.GroupRequest) (domain.Group, error)
 	CreateRole(ctx context.Context, req domain.RoleRequest) (domain.Role, error)
 	UpdateUser(ctx context.Context, id int, req domain.UserRequest) (domain.User, error)
@@ -96,6 +97,21 @@ func (c *Client) CreateUser(ctx context.Context, req domain.UserRequest) (domain
 	}
 	normalizeUser(&out)
 	return out, nil
+}
+
+// SetUserPassword sets a user's initial password via the dedicated Authentik
+// set_password endpoint. Authentik does not accept a password on the create
+// payload, so this must be called after CreateUser for a new account to be
+// able to log in.
+func (c *Client) SetUserPassword(ctx context.Context, id int, password string) error {
+	path := pathUsers + strconv.Itoa(id) + "/set_password/"
+	body := struct {
+		Password string `json:"password"`
+	}{Password: password}
+	if err := c.do(ctx, http.MethodPost, path, body, nil); err != nil {
+		return fmt.Errorf("set user %d password: %w", id, err)
+	}
+	return nil
 }
 
 func (c *Client) CreateGroup(ctx context.Context, req domain.GroupRequest) (domain.Group, error) {

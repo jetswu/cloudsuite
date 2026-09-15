@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2 } from "lucide-react"
+import { Check, Copy, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { adminApi, type AdminGroup, type AdminUser } from "@/lib/api"
+import { generatePassword } from "@/lib/password-generator"
 
 type UserFormDialogProps = {
   open: boolean
@@ -22,8 +23,10 @@ type UserFormDialogProps = {
   token: string | undefined
   user: AdminUser | null
   groups: AdminGroup[]
-  onSaved: (user: AdminUser) => void
+  onSaved: (user: AdminUser, password?: string) => void
 }
+
+type PasswordMode = "auto" | "manual"
 
 function formatDateTime(value: string | null): string {
   if (!value) return "—"
@@ -36,6 +39,13 @@ function formatDateTime(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+function passwordValid(pw: string): boolean {
+  if (pw.length < 8) return false
+  const hasLetter = /[a-zA-Z]/.test(pw)
+  const hasDigit = /[0-9]/.test(pw)
+  return hasLetter && hasDigit
 }
 
 export function UserFormDialog({
@@ -52,6 +62,10 @@ export function UserFormDialog({
   const [email, setEmail] = useState("")
   const [isActive, setIsActive] = useState(true)
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
+  const [passwordMode, setPasswordMode] = useState<PasswordMode>("auto")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,9 +76,13 @@ export function UserFormDialog({
       setEmail(user?.email ?? "")
       setIsActive(user?.is_active ?? true)
       setSelectedGroups(user?.groups ?? [])
+      setPasswordMode("auto")
+      setPassword(isEdit ? "" : generatePassword())
+      setShowPassword(false)
+      setCopied(false)
       setError(null)
     }
-  }, [open, user])
+  }, [open, user, isEdit])
 
   function toggleGroup(uuid: string) {
     setSelectedGroups((prev) =>
@@ -72,9 +90,23 @@ export function UserFormDialog({
     )
   }
 
+  async function copyPassword() {
+    try {
+      await navigator.clipboard.writeText(password)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError("Gagal menyalin ke clipboard.")
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!token) return
+    if (!isEdit && !passwordValid(password)) {
+      setError("Password minimal 8 karakter dan mengandung huruf + angka.")
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -94,8 +126,9 @@ export function UserFormDialog({
           email,
           is_active: isActive,
           groups: selectedGroups,
+          password,
         })
-        onSaved(created)
+        onSaved(created.user, created.password)
       }
       onOpenChange(false)
     } catch (err) {
@@ -145,6 +178,102 @@ export function UserFormDialog({
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
+
+          {!isEdit ? (
+            <div className="space-y-2 rounded-lg border border-border p-3">
+              <Label>Password</Label>
+              <div className="flex items-center gap-4">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name="password-mode"
+                    checked={passwordMode === "auto"}
+                    onChange={() => {
+                      setPasswordMode("auto")
+                      setPassword(generatePassword())
+                      setShowPassword(false)
+                    }}
+                  />
+                  <span className="text-sm">Auto-generate</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name="password-mode"
+                    checked={passwordMode === "manual"}
+                    onChange={() => {
+                      setPasswordMode("manual")
+                      setPassword("")
+                      setShowPassword(false)
+                    }}
+                  />
+                  <span className="text-sm">Manual</span>
+                </label>
+              </div>
+
+              {passwordMode === "auto" ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={password}
+                    readOnly
+                    className="font-mono text-sm"
+                    aria-label="Password otomatis"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setPassword(generatePassword())}
+                    aria-label="Regenerate password"
+                  >
+                    <RefreshCw className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={copyPassword}
+                    aria-label="Copy password"
+                  >
+                    {copied ? (
+                      <Check className="size-4" />
+                    ) : (
+                      <Copy className="size-4" />
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Minimal 8 karakter, huruf + angka"
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Sembunyikan" : "Tampilkan"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="size-4" />
+                    ) : (
+                      <Eye className="size-4" />
+                    )}
+                  </Button>
+                </div>
+              )}
+              {copied ? (
+                <p className="text-xs text-muted-foreground">Tersalin</p>
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                Minimal 8 karakter, mengandung huruf + angka.
+              </p>
+            </div>
+          ) : null}
 
           {isEdit ? (
             <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">

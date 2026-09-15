@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { UserFormDialog } from "@/components/admin/user-form-dialog"
+import { UserCreatedDialog } from "@/components/admin/user-created-dialog"
 import { useAdminResource } from "@/hooks/use-admin-resource"
 import { useGroups } from "@/hooks/use-groups"
 import { adminApi, type AdminUser } from "@/lib/api"
@@ -47,6 +48,8 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
   const [deleting, setDeleting] = useState<AdminUser | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [createdUser, setCreatedUser] = useState<AdminUser | null>(null)
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -72,13 +75,22 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
     setFormOpen(true)
   }
 
-  function handleSaved(user: AdminUser) {
+  function handleSaved(user: AdminUser, password?: string) {
     setData((prev) => {
       const exists = prev.some((u) => u.pk === user.pk)
       return exists
         ? prev.map((u) => (u.pk === user.pk ? user : u))
         : [...prev, user]
     })
+    if (password !== undefined) {
+      setCreatedUser(user)
+      setCreatedPassword(password)
+    }
+  }
+
+  function closeCreatedDialog() {
+    setCreatedUser(null)
+    setCreatedPassword(null)
   }
 
   async function toggleActive(u: AdminUser) {
@@ -313,6 +325,15 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
         user={editing}
         groups={groups.data}
         onSaved={handleSaved}
+      />
+
+      <UserCreatedDialog
+        user={createdUser}
+        password={createdPassword}
+        open={createdUser !== null}
+        onOpenChange={(open) => {
+          if (!open) closeCreatedDialog()
+        }}
       />
 
       <ConfirmDialog

@@ -41,7 +41,9 @@ type Role struct {
 	Name string `json:"name"`
 }
 
-// UserRequest is the create/update payload for a core user.
+// UserRequest is the create/update payload for a core user. It maps 1:1 to the
+// Authentik UserSerializer and therefore carries no password: Authentik sets a
+// user's password via a dedicated set_password call, never on create/update.
 // Pointers mark optional fields; nil means "leave unchanged" on update.
 type UserRequest struct {
 	Username string   `json:"username"`
@@ -50,6 +52,21 @@ type UserRequest struct {
 	IsActive *bool    `json:"is_active,omitempty"`
 	Groups   []string `json:"groups,omitempty"`
 	Roles    []string `json:"roles,omitempty"`
+}
+
+// CreateUserRequest is the admin create-user payload: the Authentik user fields
+// plus the initial plaintext password. The password is applied by the handler
+// via a dedicated set_password call and never sent in the create body.
+type CreateUserRequest struct {
+	UserRequest
+	Password string `json:"password"`
+}
+
+// CreateUserResponse is returned by POST /api/admin/users. It carries the
+// created user plus the plaintext password, shown to the admin exactly once.
+type CreateUserResponse struct {
+	User     User   `json:"user"`
+	Password string `json:"password"`
 }
 
 // GroupRequest is the create/update payload for a core group.

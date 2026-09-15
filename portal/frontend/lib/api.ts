@@ -43,6 +43,15 @@ export type UserRequest = {
   roles?: string[]
 }
 
+export type CreateUserRequest = UserRequest & {
+  password: string
+}
+
+export type CreateUserResponse = {
+  user: AdminUser
+  password: string
+}
+
 export type GroupRequest = {
   name: string
   is_superuser?: boolean
@@ -85,8 +94,8 @@ async function request<T>(
 export const adminApi = {
   listUsers: (token: string) => request<AdminUser[]>("/users", token),
 
-  createUser: (token: string, body: UserRequest) =>
-    request<AdminUser>("/users", token, {
+  createUser: (token: string, body: CreateUserRequest) =>
+    request<CreateUserResponse>("/users", token, {
       method: "POST",
       body: JSON.stringify(body),
     }),

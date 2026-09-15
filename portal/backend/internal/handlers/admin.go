@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -81,7 +82,7 @@ func (a *AdminHandler) listUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
-	var req domain.UserRequest
+	var req domain.CreateUserRequest
 	if !decodeBody(w, r, &req) {
 		return
 	}
@@ -89,12 +90,48 @@ func (a *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username and name are required"})
 		return
 	}
-	user, err := a.repo.CreateUser(r.Context(), req)
+	if err := validatePassword(req.Password); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	user, err := a.repo.CreateUser(r.Context(), req.UserRequest)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "create user", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, user)
+	if err := a.repo.SetUserPassword(r.Context(), user.PK, req.Password); err != nil {
+		writeError(w, http.StatusBadGateway, "set user password", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, domain.CreateUserResponse{
+		User:     user,
+		Password: req.Password,
+	})
+}
+
+// validatePassword enforces the minimum password policy for a newly created
+// user: at least 8 characters with at least one letter and one digit.
+func validatePassword(pw string) error {
+	if len(pw) < 8 {
+		return errors.New("password must be at least 8 characters")
+	}
+	var hasLetter, hasDigit bool
+	for _, r := range pw {
+		switch {
+		case r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z':
+			hasLetter = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		}
+		if hasLetter && hasDigit {
+			return nil
+		}
+	}
+	if !hasLetter {
+		return errors.New("password must contain at least one letter")
+	}
+	return errors.New("password must contain at least one digit")
 }
 
 func (a *AdminHandler) updateUser(w http.ResponseWriter, r *http.Request) {
