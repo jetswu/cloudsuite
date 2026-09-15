@@ -67,16 +67,13 @@ export function UserMenu({
           <ThemeToggle />
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <form action={signOutAction} className="w-full">
-            <button
-              type="submit"
-              className="flex w-full cursor-pointer items-center gap-2 text-destructive"
-            >
-              <LogOut className="size-4" aria-hidden />
-              Keluar
-            </button>
-          </form>
+        <DropdownMenuItem
+          variant="destructive"
+          onSelect={() => void signOutAction()}
+          className="cursor-pointer"
+        >
+          <LogOut className="size-4" aria-hidden />
+          Keluar
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
