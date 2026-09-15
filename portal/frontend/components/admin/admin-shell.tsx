@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Cloud, Folder, Users } from "lucide-react"
+import { Cloud, Folder, Globe, Users } from "lucide-react"
 import { cn } from "cn"
 import { UserMenu } from "@/components/user-menu"
 import type { ReactNode } from "react"
@@ -10,6 +10,7 @@ import type { ReactNode } from "react"
 const navItems = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/groups", label: "Groups", icon: Folder },
+  { href: "/admin/domains", label: "Domains", icon: Globe },
 ]
 
 type AdminShellProps = {

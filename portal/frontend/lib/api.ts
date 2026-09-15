@@ -64,6 +64,55 @@ export type RoleRequest = {
   name: string
 }
 
+// --- Domain onboarding (Sprint 1.3) ---
+
+export type DomainStatus =
+  | "pending"
+  | "dns_in_progress"
+  | "verified"
+  | "active"
+  | "error"
+
+export type DNSRecordStatus = "pending" | "verified" | "failed" | "mismatch"
+
+export type DNSRecordPurpose = "mx" | "spf" | "dkim" | "dmarc"
+
+export type PortalDomain = {
+  id: string
+  name: string
+  tenant_id?: string | null
+  status: DomainStatus
+  stalwart_domain_id?: string | null
+  verified_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type DNSRecord = {
+  id: string
+  domain_id: string
+  record_type: "MX" | "TXT"
+  name: string
+  value: string
+  priority?: number | null
+  purpose: DNSRecordPurpose
+  is_required: boolean
+  status: DNSRecordStatus
+  last_checked_at?: string | null
+  last_error?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type DomainDetail = {
+  domain: PortalDomain
+  records: DNSRecord[]
+}
+
+export type CreateDomainRequest = {
+  name: string
+}
+
 const BASE = "/api/admin"
 
 async function request<T>(
@@ -162,4 +211,28 @@ export const adminApi = {
 
   deleteRole: (token: string, uuid: string) =>
     request<void>(`/roles/${uuid}`, token, { method: "DELETE" }),
+
+  // --- Domain onboarding ---
+
+  listDomains: (token: string) => request<PortalDomain[]>("/domains", token),
+
+  createDomain: (token: string, body: CreateDomainRequest) =>
+    request<DomainDetail>("/domains", token, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getDomain: (token: string, id: string) =>
+    request<DomainDetail>(`/domains/${id}`, token),
+
+  deleteDomain: (token: string, id: string) =>
+    request<void>(`/domains/${id}`, token, { method: "DELETE" }),
+
+  verifyDomain: (token: string, id: string) =>
+    request<DomainDetail>(`/domains/${id}/verify`, token, {
+      method: "POST",
+    }),
+
+  listDNSRecords: (token: string, id: string) =>
+    request<DNSRecord[]>(`/domains/${id}/records`, token),
 }

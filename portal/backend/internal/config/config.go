@@ -17,6 +17,17 @@ type Config struct {
 	AuthentikAPIToken  string
 	CORSAllowedOrigins string
 	LogLevelRaw        string
+
+	// Portal database (Sprint 1.3).
+	PortalDBHost     string
+	PortalDBPort     string
+	PortalDBName     string
+	PortalDBUser     string
+	PortalDBPassword string
+
+	// Stalwart mail server (Sprint 1.3).
+	StalwartAPIURL string
+	StalwartAPIKey string
 }
 
 // Load reads config from environment with sane defaults.
@@ -29,6 +40,15 @@ func Load() (*Config, error) {
 		AuthentikAPIToken:  os.Getenv("AUTHENTIK_API_TOKEN"),
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000"),
 		LogLevelRaw:        getEnv("LOG_LEVEL", "info"),
+
+		PortalDBHost:     getEnv("PORTAL_DB_HOST", "postgres"),
+		PortalDBPort:     getEnv("PORTAL_DB_PORT", "5432"),
+		PortalDBName:     getEnv("PORTAL_DB_NAME", "portal"),
+		PortalDBUser:     getEnv("PORTAL_DB_USER", "cloudsuite"),
+		PortalDBPassword: os.Getenv("PORTAL_DB_PASSWORD"),
+
+		StalwartAPIURL: os.Getenv("STALWART_API_URL"),
+		StalwartAPIKey: os.Getenv("STALWART_API_KEY"),
 	}
 	if cfg.AuthentikIssuer == "" {
 		return nil, fmt.Errorf("AUTHENTIK_ISSUER is required")
@@ -37,6 +57,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("AUTHENTIK_CLIENT_ID is required")
 	}
 	return cfg, nil
+}
+
+// PortalDBConfig returns the database.Config for the portal database.
+func (c *Config) PortalDBConfig() (host, port, name, user, password string) {
+	return c.PortalDBHost, c.PortalDBPort, c.PortalDBName, c.PortalDBUser, c.PortalDBPassword
 }
 
 // CORSAllowedOriginsSlice splits CORS_ALLOWED_ORIGINS (comma-separated).
