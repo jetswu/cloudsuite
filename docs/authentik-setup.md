@@ -84,7 +84,7 @@ Jangan hapus baris ini saat edit compose.
 - Client secret: tersimpan di Nextcloud OCC config (user_oidc provider CloudSuite) -- TIDAK ditulis di dokumen ini.
 - Redirect URI (strict): https://drive.idchsuite.my.id/apps/user_oidc/code
 - Discovery URI: https://auth.idchsuite.my.id/application/o/nextcloud/.well-known/openid-configuration -- HTTP:200
-- Authorization flow: default-provider-authorization-explicit-consent (7f475261-68fa-45de-9226-de2be34014a5)
+- Authorization flow: default-provider-authorization-implicit-consent (2c1630b0-4c43-4da1-aeeb-679a15dc5d18) — lihat "Sprint 1.2d Implicit Consent Flow" di bawah.
 - Invalidation flow: default-provider-invalidation-flow (3353607b-6e34-406a-95f6-74ef80852a35)
 - Signing key: bawaan authentik Self-signed Certificate (38b70fc0-69b8-44fa-b959-ad02ca4197da)
 - Subject mode: hashed_user_id, Issuer mode: global, Scopes: openid/email/profile
@@ -153,3 +153,16 @@ Untuk jmap-webmail (`https://webmail.idchsuite.my.id`). Detail ops: `jmap-webmai
 - grant_types WAJIB eksplisit (`authorization_code`,`refresh_token`) — default kosong → authorize `invalid_request`
 - Trailing slash: `OAUTH_ISSUER_URL` .env TANPA slash; `iss` token & Stalwart issuerUrl DENGAN slash
 - Setelah `directoryId` = OIDC: admin password login (Basic CLI/webadmin) 401 — manajemen via ApiKey (`secrets/stalwart-apikey.txt`)
+
+## Sprint 1.2d Implicit Consent Flow (2026-09-15)
+
+- Konteks: consent screen ("Application requires following permissions") muncul tiap login user baru → UX kurang smooth. Semua app = milik CloudSuite (own apps), jadi implicit consent lebih baik — user tetap setuju login di Portal (represent consent).
+- Perubahan: `authorization_flow` semua provider own-app diubah dari `default-provider-authorization-explicit-consent` (`7f475261-68fa-45de-9226-de2be34014a5`) ke `default-provider-authorization-implicit-consent` (`2c1630b0-4c43-4da1-aeeb-679a15dc5d18`).
+- Provider yang diubah (via `PATCH /api/v3/providers/oauth2/{pk}/`, HTTP 200 semua):
+  - Nextcloud pk 2
+  - Odoo pk 3
+  - Stalwart Mail pk 6
+  - Portal pk 7
+- `redirect_uris` / `grant_types` / `property_mappings` TIDAK disentuh (verify diff backup vs live: hanya `authorization_flow` yang berubah).
+- Backup provider config sebelum PATCH: `/tmp/provider-{pk}-backup-<timestamp>.json`.
+- Template provider pk 1 (`CloudSuite Services Template`) TIDAK diubah — bukan provider live.

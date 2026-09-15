@@ -100,3 +100,9 @@ Lihat TROUBLESHOOTING.md.
 - PENTING — Authentik TIDAK menerima field `password` di body `POST /core/users/` (UserSerializer tanpa field password). Password di-set via endpoint terpisah `POST /core/users/{pk}/set_password/` (body `{"password": "..."}`, permission `authentik_core.reset_user_password`, return 204). Repository method baru `SetUserPassword` memakai endpoint ini.
 - `UserResponse`/read-model `domain.User` TIDAK punya field password — tidak pernah expose password di list/update/read.
 
+## Implicit Consent Flow (Sprint 1.2d)
+- OIDC provider `portal` (PK 7) `authorization_flow` diubah ke `default-provider-authorization-implicit-consent` (`2c1630b0-4c43-4da1-aeeb-679a15dc5d18`).
+- Efek UX: login user (baru maupun returning) langsung masuk ke Portal tanpa consent screen "Application requires following permissions".
+- Berlaku juga untuk provider own-app lain: Nextcloud (PK 2), Odoo (PK 3), Stalwart Mail (PK 6).
+- `redirect_uris`/`grant_types`/`property_mappings` TIDAK berubah. Detail: `docs/authentik-setup.md` → "Sprint 1.2d Implicit Consent Flow".
+
