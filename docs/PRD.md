@@ -71,7 +71,7 @@ DSpace.
 ## 5. Functional Requirements
 
 ### 5.1 Identity & Access Management
-- Registrasi via invitation (sales-led)
+- Registrasi via admin add (superadmin/tenant admin)
 - Login email/username
 - Lupa password & reset via email
 - MFA: TOTP, email OTP
@@ -93,7 +93,7 @@ Phase 2: SLO native semua layanan.
 - Branding hybrid (logo tenant, warna CloudSuite)
 
 ### 5.4 Admin Console
-- CRUD user + bulk CSV
+- CRUD user (add user + set password awal)
 - CRUD group + role
 - Mapping group CloudSuite → layanan
 - Provisioning job monitor
@@ -127,7 +127,7 @@ ERP (Odoo):
 - Modul sesuai paket
 
 ### 5.7 Notifikasi
-In-app + email untuk: undangan, reset password, domain verified,
+In-app + email untuk: reset password, domain verified,
 provisioning, login device baru.
 
 ### 5.8 Audit & Compliance
@@ -272,3 +272,9 @@ Phase 4 — Scale (Sprint 3.x)
 - docs/stalwart-notes.md — notes Stalwart
 - docs/PROJECT-STATE.md — snapshot status
 - Repo: github.com/jetswu/cloudsuite
+
+## 11. Changelog
+
+- (Sprint 1.2c) Email invitation dihapus karena model sales-led (customer
+  belum punya email aktif saat onboarding). Ganti: admin create user + set
+  password awal, share via channel aman (WhatsApp/telepon).

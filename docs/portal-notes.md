@@ -92,3 +92,11 @@ Lihat TROUBLESHOOTING.md.
 - Komponen frontend baru: `user-form-dialog.tsx`, `group-members-dialog.tsx`, `confirm-dialog.tsx`; hook `use-groups.ts`; shadcn `dialog`, `alert-dialog`, `checkbox`, `popover`.
 - Cloudflare 1010 (Fase G): hanya memblokir fingerprint Python `urllib` (Bot Fight Mode), curl default UA dan browser UA keduanya HTTP 200 — tidak ada perubahan konfigurasi Cloudflare.
 
+## Admin Add User + Password Handling (Sprint 1.2c)
+- Model invitation dihapus. Ganti: admin create user + set password awal (sales-led, customer belum punya email aktif).
+- Frontend: `lib/password-generator.ts` (CSPRNG `crypto.getRandomValues`, upper+lower+digit+symbol, Fisher–Yates shuffle). `user-form-dialog.tsx` field password mode auto-generate (default, readonly + Regenerate + Copy) / manual (show/hide toggle). Validasi min 8 char + huruf + angka. Edit mode TIDAK menampilkan password.
+- Dialog sukses `user-created-dialog.tsx`: tampilkan username + password sekali, tombol Copy, warning kuat; setelah tutup password di-clear dari state (`users-manager.tsx` hold `createdUser`/`createdPassword` sementara, bukan persist).
+- Backend: `CreateUserRequest` (embed `UserRequest` + `password`), `CreateUserResponse {user, password}`. Handler `POST /api/admin/users` decode `CreateUserRequest`, validasi password (`validatePassword`), lalu dua langkah: `CreateUser` → `SetUserPassword`, return `201 {user, password}`.
+- PENTING — Authentik TIDAK menerima field `password` di body `POST /core/users/` (UserSerializer tanpa field password). Password di-set via endpoint terpisah `POST /core/users/{pk}/set_password/` (body `{"password": "..."}`, permission `authentik_core.reset_user_password`, return 204). Repository method baru `SetUserPassword` memakai endpoint ini.
+- `UserResponse`/read-model `domain.User` TIDAK punya field password — tidak pernah expose password di list/update/read.
+

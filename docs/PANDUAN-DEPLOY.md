@@ -1088,9 +1088,16 @@ SSO manual test: buka portal → "Sign in with CloudSuite" → login Authentik �
 1. Login sebagai `akadmin` (superadmin).
 2. User menu → "Admin" muncul.
 3. `/admin/users` → list user (2 user awal: ak-outpost + akadmin).
-4. Tambah user → cek muncul di Authentik (`/api/v3/core/users/`).
-5. `/admin/groups` → list group (6 group awal), CRUD group.
-6. Login user biasa → `/admin` harus redirect `/dashboard`, `/api/admin/users` → 403.
+4. Tambah user → isi username/nama + pilih password (auto-generate default atau manual) → submit → dialog sukses tampilkan username + password sekali. Copy password, kirim ke user via channel aman (WhatsApp/telepon).
+5. Cek user muncul di `/admin/users` + di Authentik (`/api/v3/core/users/`).
+6. Login Authentik dengan username + password baru → harus berhasil.
+7. Tutup dialog sukses → password tidak muncul lagi (state cleared).
+8. `/admin/groups` → list group (6 group awal), CRUD group.
+9. Login user biasa → `/admin` harus redirect `/dashboard`, `/api/admin/users` → 403.
+
+### Catatan password handling
+
+- Password TIDAK pernah dikirim di body create Authentik — backend set password via `POST /api/v3/core/users/{pk}/set_password/` setelah create user sukses (dua langkah).
 
 ### Troubleshooting cepat
 
