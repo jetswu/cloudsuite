@@ -577,21 +577,25 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 - `curl -s -D - -X POST .../application/o/token/` dengan `Origin: https://webmail.idchsuite.my.id` → `access-control-allow-origin: https://webmail.idchsuite.my.id`.
 - Discovery endpoint `.well-known/openid-configuration` → header CORS yang sama.
 
-
-## LayoutProps tidak terdefinisi (Next.js)
+## Portal — DKIM race condition (Sprint 1.3-fix)
 ### Gejala
-- Typecheck / `next build` gagal: `TS2304: Cannot find name LayoutProps` di `app/layout.tsx`.
+- Add domain di wizard → DB `dns_records` tidak punya baris `dkim` (hanya mx/spf/dmarc), DKIM kosong di UI.
+- Padahal Stalwart `query DkimSignature` menunjukkan selector active (ed25519 + rsa).
 ### Root Cause
-- `LayoutProps<"/">` berasal dari experimental Next.js typed-routes feature yang belum diaktifkan / dihapus.
+- Stalwart generate DKIM key **asynchronous** setelah `x:Domain/set` (Automatic DKIM). Code portal baca `dnsZoneFile` langsung setelah create → zone belum berisi `_domainkey` → parser tidak menghasilkan record DKIM.
 ### Fix
-- Ganti signature jadi `{ children: React.ReactNode }` + import type `ReactNode`.
-### Tech debt
-- Cek experimental feature di `next.config.ts`; hapus referensi `LayoutProps` kalau typed-routes tidak dipakai.
+- `stalwart/client.go RegisterDomain` sekarang poll `getDomain` (max 5x, delay 2s ≈ 10s) sampai `dnsZoneFile` berisi `_domainkey`. Timeout → tetap return domain (tidak fail create), log warning zerolog.
+### Pencegahan
+- Jangan asumsi zone file langsung lengkap setelah create domain; selalu poll DKIM selector sebelum parse.
 
-## Portal backend crash: `sql: unknown driver "pgx"`
+## Portal — Verify checker lookup FQDN salah (Sprint 1.3-fix)
 ### Gejala
-- Container `cloudsuite-portal-backend` restart loop; log: `sql: unknown driver "pgx" (forgotten import?)`.
+- MX/SPF/DKIM/DMARC status `failed` padahal record publik sudah resolve di whatsmydns.net.
+- `last_error`: `MX lookup failed: lookup mail.idchsuite.my.id ... no such host`, `TXT lookup failed: lookup @ / _dmarc ... no such host`.
 ### Root Cause
-- Goose v3 memakai `database/sql`; driver `pgx` belum diregister karena import blank `_ "github.com/jackc/pgx/v5/stdlib"` hilang.
+- `dns_checker.go` lookup ke `rec.Value` (MX) dan `rec.Name` relatif (`@`, `_dmarc`) — bukan ke domain. Record disimpan relatif terhadap domain sehingga tidak bisa resolve.
 ### Fix
-- Tambah `import _ "github.com/jackc/pgx/v5/stdlib"` lalu `goose.OpenDBWithDriver("pgx", pool.Config().ConnString())`.
+- `VerifyRecord` sekarang terima `domainName`. Build FQDN per purpose: MX lookup ke domain lalu match host; SPF lookup TXT apex; DKIM/DMARC lookup `rec.Name + "." + domainName`. Normalisasi: MX strip trailing dot + lowercase; SPF/DMARC case-insensitive; DKIM case-sensitive trim quotes.
+- `DNSResolver` dijadikan interface agar unit test bisa mock `LookupMX`/`LookupTXT` (`dns_checker_test.go`).
+### Pencegahan
+- Selalu lookup ke FQDN (domain), bukan value/name relatif; normalisasi trailing dot + case sebelum compare.
