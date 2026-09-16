@@ -74,6 +74,17 @@ func (c *Client) ListUsers(ctx context.Context) ([]domain.User, error) {
 	return normalizeUsers(out.Results), nil
 }
 
+// GetUser fetches a single user by primary key. The uid field (sha256 hex
+// subject) is what Nextcloud/Odoo use as the SSO identity.
+func (c *Client) GetUser(ctx context.Context, id int) (domain.User, error) {
+	var out domain.User
+	if err := c.do(ctx, http.MethodGet, pathUsers+strconv.Itoa(id)+"/", nil, &out); err != nil {
+		return domain.User{}, fmt.Errorf("get user %d: %w", id, err)
+	}
+	normalizeUser(&out)
+	return out, nil
+}
+
 func (c *Client) ListGroups(ctx context.Context) ([]domain.Group, error) {
 	var out paginated[domain.Group]
 	if err := c.do(ctx, http.MethodGet, pathGroups, nil, &out); err != nil {
