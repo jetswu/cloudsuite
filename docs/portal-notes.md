@@ -114,3 +114,17 @@ Lihat TROUBLESHOOTING.md.
 - Migration `00003_add_dkim_mode.sql`: kolom `domains.dkim_mode` default `rsa` + CHECK constraint; existing domain otomatis `rsa`.
 - End-to-end test bertag `e2e` (`internal/service/e2e_dkim_mode_test.go`) jalan di network compose dengan Stalwart+DB nyata; create 4 domain test lalu cleanup otomatis.
 
+## Provisioning Service (Sprint 1.4a)
+- Arsitektur: Portal `POST /api/admin/users` (handler CreateUser) -> validasi -> insert `provisioning_jobs` + LPUSH Redis -> worker `cloudsuite-portal-worker` (BRPOP) -> 3 connectors.
+- Job types: `provision` | `deprovision` (deprovision baru jalan di Sprint 1.4b; worker 1.4a menolak dengan pesan eksplisit "not supported in Sprint 1.4a").
+- Services: `stalwart` (create account via JMAP `x:Account/set`, SSO-only tanpa password), `nextcloud` (OCS create user + pre-insert mapping `oc_user_oidc` provider 1, sub=uid Authentik), `odoo` (DEFERRED - tidak create apa pun; status `active` + external_id `deferred-first-login`; akun Odoo auto-create saat first login SSO).
+- Status job: `queued -> running -> success|failed` (CHECK constraint migration 00004); retry max 3 attempt (`max_attempts`).
+- Retry: exponential backoff 30s -> 2m -> 8m (base 30s x4 per attempt, cap 8m; `backoff()` di service.go).
+- Sweep recovery: tiap 60 detik worker re-enqueue (a) job `queued` lebih tua dari 2 menit (enqueue Redis hilang) dan (b) job `failed` yang `next_retry_at` sudah lewat. Terbukti live: job odoo di-inject DB-only (tanpa Redis) diangkat sweep lalu sukses.
+- Identitas di-resolve worker via Authentik API `GET /core/users/{pk}/` (trailing slash wajib - DRF 404 tanpa itu) memakai pk user portal.
+- Validasi sebelum trigger: format email + domain terdaftar di tabel `domains` (via list domain Stalwart).
+- Idempotent: terbukti live di Stalwart (job duplikat -> tetap tepat 1 akun, tanpa error); connector Nextcloud cek user exist via OCS dulu; Odoo deferred idempotent by design.
+- Queue: Redis list key `provisioning:jobs` (LPUSH/BRPOP FIFO); payload JSON raw. Redis client RESP minimal ditulis sendiri (tanpa dependency baru).
+- Persist: `provisioning_jobs` (per service) + `user_provisioning` (agregat per user: `*_status`, `*_external_id`).
+- Env worker: REDIS_ADDR/REDIS_PASSWORD, AUTHENTIK_API_URL/AUTHENTIK_API_TOKEN/AUTHENTIK_ISSUER/AUTHENTIK_CLIENT_ID, STALWART_API_URL/STALWART_API_KEY, NEXTCLOUD_BASE_URL (WAJIB host canonical `https://drive.idchsuite.my.id` - `http://nextcloud` di-redirect ke HTML), NEXTCLOUD_ADMIN_USER/NEXTCLOUD_ADMIN_PASS, ODOO_BASE_URL/ODOO_DB/ODOO_ADMIN_USER/ODOO_ADMIN_PASSWORD.
+- Worker TIDAK menjalankan migration (hindari race goose dengan backend) - migration jalan di portal-backend saja.

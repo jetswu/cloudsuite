@@ -689,3 +689,37 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 - (Backlog Sprint 1.5) Checker membedakan NXDOMAIN → status `pending`
   (bukan `failed`) + pesan "DNS belum propagate, coba lagi 5 menit" +
   tombol "Flush & Retry" di wizard.
+
+## Portal — Provisioning (Sprint 1.4a)
+
+### "Provisioning job stuck" / user baru tidak dapat mail + drive
+- Cek worker: `docker logs cloudsuite-portal-worker --since 10m` — harus ada
+  "provisioning worker started"; crash-loop biasanya env compose kurang
+  (REDIS_/AUTHENTIK_/STALWART_/NEXTCLOUD_/ODOO_).
+- Cek DB: `SELECT service,status,attempts,next_retry_at,last_error FROM
+  provisioning_jobs WHERE user_email='<email>' ORDER BY created_at DESC;`
+- Enqueue Redis hilang (job `queued` lama tidak diproses) → sweep worker
+  otomatis re-enqueue tiap 60 detik (job queued > 2 menit, dan job failed yang
+  retry-nya sudah jatuh tempo). Bahkan job yang hanya di-INSERT ke DB (tanpa
+  Redis) pun diangkat sweep — terbukti live.
+- Job `failed` → retry otomatis backoff 30s → 2m → 8m, maks 3 attempt; lihat
+  `last_error`.
+
+### Stalwart: `unsupportedFilter` saat query akun by email
+- JMAP `x:Account/query` TIDAK mendukung `filter:{email}`. Pakai query tanpa
+  filter lalu match property `emailAddress` client-side (implementasi di
+  `internal/provisioning/stalwart.go`).
+
+### Odoo JSON-RPC 404 saat search (auth sukses)
+- Endpoint object call yang benar: `POST /jsonrpc` dengan envelope
+  `{"params":{"service":"object","method":"execute_kw","args":[...]}}`.
+  `/web/dataset/call_kw` menjawab 404 untuk shape ini.
+- Auth `POST /web/session/authenticate` sukses tapi `uid` ada di `result.uid`
+  (dibungkus `result`), bukan top-level — struct decode harus sesuai.
+- Hostname `odoo:` hanya resolve dari dalam jaringan docker `cloudsuite-net`;
+  dari host VPS DNS gagal. Test auth selalu dari container dalam network.
+
+### Nextcloud: create user dapat HTML / redirect
+- `NEXTCLOUD_BASE_URL` wajib host canonical `https://drive.idchsuite.my.id`.
+  Base URL internal `http://nextcloud` di-redirect ke halaman HTML → parsing
+  OCS gagal.

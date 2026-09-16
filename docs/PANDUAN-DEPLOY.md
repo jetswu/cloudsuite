@@ -1154,6 +1154,53 @@ SSO manual test: buka portal → "Sign in with CloudSuite" → login Authentik �
 
 ---
 
+## Bagian 12f — Provisioning Service (Sprint 1.4a)
+
+Status: LIVE (16 Sep 2026). Worker `cloudsuite-portal-worker` otomatis membuat akun
+mail + drive setiap admin membuat user baru di Portal; akun ERP dibuat Odoo saat
+first login SSO (deferred).
+
+### Prasyarat
+- Migration `00004_provisioning.sql` applied — jalan otomatis oleh
+  `cloudsuite-portal-backend` saat start. Cek log: `successfully migrated database
+  to version: 4` (atau `no migrations to run` bila sudah).
+- Env `portal-worker` di compose (semua via `/opt/cloudsuite/.env`): `REDIS_*`,
+  `AUTHENTIK_*` (API URL+TOKEN, ISSUER, CLIENT_ID), `STALWART_*`,
+  `NEXTCLOUD_*` — `NEXTCLOUD_BASE_URL` wajib `https://drive.idchsuite.my.id`
+  (host canonical) —, `ODOO_*`.
+- Service `portal-worker` di `infra/docker/docker-compose.yml` (build
+  `portal/backend/Dockerfile.worker`).
+
+### Deploy / update
+```bash
+cd /opt/cloudsuite/infra/docker
+docker compose build portal-backend portal-worker
+docker compose up -d --force-recreate portal-backend portal-worker
+```
+
+### Verify
+```bash
+docker compose ps portal-worker                  # Up
+docker logs cloudsuite-portal-worker --tail 5    # "provisioning worker started"
+docker logs cloudsuite-portal-backend 2>&1 | grep -i migrat   # v4 / no migrations to run
+```
+
+### Test end-to-end
+1. Portal `/admin/users` → Create user (email domain terdaftar). User test yang
+   sudah dipakai Sprint 1.4a: `testprov@perjuangrupiah.my.id`.
+2. Tunggu ±30 detik. Bila ada failure, retry otomatis backoff 30s → 2m → 8m
+   (maks 3 attempt), plus sweep recovery tiap 60 detik.
+3. Cek status:
+```bash
+docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c   "SELECT service, status, attempts FROM provisioning_jobs WHERE user_email='<email>';"
+docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c   "SELECT * FROM user_provisioning WHERE user_email='<email>';"
+```
+4. Verifikasi side effect: login webmail SSO (akun Stalwart dibuat), Nextcloud
+   `occ user:info <uid>` + baris `oc_user_oidc`, login ERP pertama → akun
+   auto-create 1-3 detik.
+
+---
+
 ## Bagian 13 — Backup (Opsional)
 
 Status: [TBC] — prosedur backup lengkap belum ada (TODO staging).

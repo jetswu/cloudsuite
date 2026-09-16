@@ -1,7 +1,7 @@
 # CloudSuite — Project State
 
 > Snapshot status project. Update setiap sprint selesai.
-> Terakhir update: 2026-09-15 (Sprint 1.3 — DNS Wizard + Domain Onboarding).
+> Terakhir update: 2026-09-16 (Sprint 1.4a — Provisioning Inti).
 
 ## 1. Overview
 
@@ -35,6 +35,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - [x] 1.2c — Admin add user + password handling (set_password terpisah)
 - [x] 1.2d — Implicit consent flow OIDC (login tanpa consent screen)
 - [x] 1.3 — DNS Wizard + Domain Onboarding (superadmin)
+- [x] 1.4a — Provisioning Inti (queue Redis + worker + connectors Stalwart/Nextcloud/Odoo-deferred, E2E live)
 
 ## 3. Keputusan yang Dikunci
 
@@ -60,7 +61,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 
 ## 5. Kontainer
 
-11 container healthy:
+12 container healthy:
 
 - cloudsuite-postgres
 - cloudsuite-redis
@@ -70,11 +71,14 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - cloudsuite-nextcloud
 - cloudsuite-odoo
 - cloudsuite-stalwart
+- cloudsuite-jmapwebmail
 - cloudsuite-portal-backend
 - cloudsuite-portal-frontend
+- cloudsuite-portal-worker
 
 ## 6. Next Action
 
+- Sprint 1.4b — De-provisioning + UI status/retry provisioning
 - Sprint 2.0 — Tenant admin UI (`/manage`, Phase 2)
 
 ## 7. Referensi
@@ -84,4 +88,4 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - docs/authentik-setup.md — baseline Authentik
 - docs/nextcloud-notes.md — notes Nextcloud
 - docs/odoo-notes.md — notes Odoo
-- docs/portal-notes.md — notes Portal (termasuk Admin Console)
+- docs/portal-notes.md — notes Portal (termasuk Admin Console + Provisioning 1.4a)
