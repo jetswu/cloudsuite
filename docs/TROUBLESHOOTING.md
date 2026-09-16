@@ -654,3 +654,38 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 ### Pencegahan
 - Anggap key generation Stalwart hanya terjadi di create; untuk perubahan
   konfigurasi yang butuh key baru, recreate object, jangan update.
+
+## Portal — DNS verify failed NXDOMAIN padahal DNS live OK (Sprint 1.3b-fix)
+### Gejala
+- Verify domain status `failed`, `last_error: TXT lookup failed: lookup
+  <name> on 127.0.0.11:53: no such host`, padahal DNS live resolve OK
+  (via 1.1.1.1, dig @8.8.8.8, whatsmydns) dan value record persis sama.
+- Kena record yang memang sudah ada di Cloudflare, bahkan selector lama
+  yang sudah dihapus; kontrol MX/SPF/DMARC domain lain lolos lewat jalur
+  resolver yang sama.
+### Root Cause
+- systemd-resolved (host stub 127.0.0.53) me-cache NXDOMAIN dari verify
+  pertama yang jalan SEBELUM record di-publish di Cloudflare. Negative
+  TTL = SOA minimum zona (Cloudflare biasanya 1800s / 30 menit) — RFC 2308.
+- Docker embedded DNS 127.0.0.11 (jalur checker Go di container) forward
+  ke host stub, jadi semua lookup dalam jendela negative TTL dapat jawaban
+  NXDOMAIN basi meski authoritative DNS sudah serve record.
+- Bukan bug kode: setelah `resolvectl flush-caches`, verify yang sama
+  lolos semua tanpa perubahan kode/konfigurasi apa pun.
+### Bukti chain
+- `resolvectl query <dkim-name>` di host → NXDOMAIN di stub 127.0.0.53,
+  padahal query langsung ke 1.1.1.1 → TXT lengkap (multi-string).
+- Kontrol `_dmarc`/SPF/MX → lolos stub (NXDOMAIN mereka tidak pernah
+  ter-cache).
+- `resolvectl flush-caches` → query ulang stub → resolve OK; jalur penuh
+  container 127.0.0.11 → resolve OK.
+### Fix (runtime, tanpa ubah kode)
+- `sudo resolvectl flush-caches` di host, lalu verify ulang.
+### Pencegahan
+- Tunggu 5–15 menit setelah publish record di Cloudflare sebelum verify
+  pertama, atau verify ulang setelah negative TTL expire.
+- Restart container portal-backend TIDAK membantu: cache negative ada di
+  systemd-resolved host, bukan di Docker/embedded DNS.
+- (Backlog Sprint 1.5) Checker membedakan NXDOMAIN → status `pending`
+  (bukan `failed`) + pesan "DNS belum propagate, coba lagi 5 menit" +
+  tombol "Flush & Retry" di wizard.
