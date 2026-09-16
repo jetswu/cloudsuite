@@ -206,3 +206,107 @@ func TestFQDN(t *testing.T) {
 		}
 	}
 }
+
+func TestVerifyRecordDKIMJoinsMultiStringTXT(t *testing.T) {
+	// Cloudflare splits a long RSA key into two character-strings (the
+	// continuation starts with a space) and the Stalwart zone-file form
+	// leaves a trailing ")". The stored expected value is the dirty variant:
+	// multiple spaces at the split point plus the trailing paren.
+	f := &fakeResolver{
+		txt: map[string][]string{
+			"v1-rsa-20260915._domainkey.example.com": {
+				"v=DKIM1; k=rsa; h=sha256; p=MIIBIjANBgkqhkiG9FP+a3S",
+				" Ma0G5CKrestwwIDAQAB)",
+			},
+		},
+	}
+	c := newTestChecker(f)
+
+	rec := domain.DNSRecord{
+		Purpose: domain.PurposeDKIM,
+		Name:    "v1-rsa-20260915._domainkey",
+		Value:   "v=DKIM1; k=rsa; h=sha256; p=MIIBIjANBgkqhkiG9FP+a3S    Ma0G5CKrestwwIDAQAB)",
+	}
+	status, errMsg := c.VerifyRecord(context.Background(), rec, "example.com")
+	if status != domain.DNSRecordVerified {
+		t.Fatalf("status = %q (err=%v), want verified (multi-string join + normalisation)", status, errMsg)
+	}
+}
+
+func TestVerifyRecordDKIMEd25519SingleString(t *testing.T) {
+	f := &fakeResolver{
+		txt: map[string][]string{
+			"v1-ed25519-20260915._domainkey.example.com": {
+				"v=DKIM1; k=ed25519; p=11qYAYKxCrfVSZ7QWAsNLOzZ6w==",
+			},
+		},
+	}
+	c := newTestChecker(f)
+
+	rec := domain.DNSRecord{
+		Purpose: domain.PurposeDKIM,
+		Name:    "v1-ed25519-20260915._domainkey",
+		Value:   "v=DKIM1; k=ed25519; p=11qYAYKxCrfVSZ7QWAsNLOzZ6w==",
+	}
+	status, errMsg := c.VerifyRecord(context.Background(), rec, "example.com")
+	if status != domain.DNSRecordVerified {
+		t.Fatalf("status = %q (err=%v), want verified (single-string Ed25519)", status, errMsg)
+	}
+}
+
+func TestVerifyRecordDKIMToleratesExtraSpacesInExpected(t *testing.T) {
+	f := &fakeResolver{
+		txt: map[string][]string{
+			"v1-rsa-20260915._domainkey.example.com": {
+				"v=DKIM1; k=rsa; p=AAAABBBBCCCC",
+			},
+		},
+	}
+	c := newTestChecker(f)
+
+	rec := domain.DNSRecord{
+		Purpose: domain.PurposeDKIM,
+		Name:    "v1-rsa-20260915._domainkey",
+		Value:   "v=DKIM1;  k=rsa;    p=AAAABBBBCCCC",
+	}
+	status, errMsg := c.VerifyRecord(context.Background(), rec, "example.com")
+	if status != domain.DNSRecordVerified {
+		t.Fatalf("status = %q (err=%v), want verified (extra spaces in expected normalised)", status, errMsg)
+	}
+}
+
+func TestVerifyRecordDKIMMismatch(t *testing.T) {
+	f := &fakeResolver{
+		txt: map[string][]string{
+			"v1-rsa-20260915._domainkey.example.com": {
+				"v=DKIM1; k=rsa; p=AAAABBBBCCCC",
+			},
+		},
+	}
+	c := newTestChecker(f)
+
+	rec := domain.DNSRecord{
+		Purpose: domain.PurposeDKIM,
+		Name:    "v1-rsa-20260915._domainkey",
+		Value:   "v=DKIM1; k=rsa; p=XXXXYYYYZZZZ",
+	}
+	status, _ := c.VerifyRecord(context.Background(), rec, "example.com")
+	if status != domain.DNSRecordMismatch {
+		t.Fatalf("status = %q, want mismatch (different key must NOT verify)", status)
+	}
+}
+
+func TestNormalizeDKIM(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"v=DKIM1; k=rsa; p=AB", "v=DKIM1;k=rsa;p=AB"},
+		{`"v=DKIM1; k=rsa; p=AB"`, "v=DKIM1;k=rsa;p=AB"},
+		{"v=DKIM1;  k=rsa;    p=AB)", "v=DKIM1;k=rsa;p=AB"},
+		{"(v=DKIM1; k=rsa; p=AB )", "v=DKIM1;k=rsa;p=AB"},
+		{"v=DKIM1;	k=rsa;\np=AB", "v=DKIM1;k=rsa;p=AB"},
+	}
+	for _, c := range cases {
+		if got := normalizeDKIM(c.in); got != c.want {
+			t.Errorf("normalizeDKIM(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

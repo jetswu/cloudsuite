@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,7 +59,10 @@ func (c *DNSChecker) VerifyRecord(ctx context.Context, rec domain.DNSRecord, dom
 		return c.checkTXT(ctx, domainName, rec.Value, true)
 	case domain.PurposeDKIM:
 		// rec.Name is relative: "<selector>._domainkey" → full name.
-		return c.checkTXT(ctx, fqdn(rec.Name, domainName), rec.Value, false)
+		// DKIM gets its own path: long keys are split into multiple TXT
+		// character-strings that must be joined, and zone-file formatting
+		// artifacts must be normalised away (see checkDKIM).
+		return c.checkDKIM(ctx, fqdn(rec.Name, domainName), rec.Value)
 	case domain.PurposeDMARC:
 		// rec.Name is relative: "_dmarc" → full name.
 		return c.checkTXT(ctx, fqdn(rec.Name, domainName), rec.Value, true)
@@ -100,10 +104,10 @@ func (c *DNSChecker) checkMX(ctx context.Context, domainName, expected string) (
 }
 
 // checkTXT verifies the expected value appears among the TXT records at the
-// given fully-qualified name. Matching is by substring: SPF and DMARC are
-// compared case-insensitively (caseInsensitive=true), DKIM case-sensitively
-// (false). Published TXT values are stripped of surrounding quotes and
-// whitespace before comparison.
+// given fully-qualified name. Matching is by substring, case-insensitively;
+// used by SPF and DMARC. Published TXT values are stripped of surrounding
+// quotes and whitespace before comparison. DKIM does NOT go through here —
+// see checkDKIM.
 func (c *DNSChecker) checkTXT(ctx context.Context, fullName, expected string, caseInsensitive bool) (domain.DNSRecordStatus, *string) {
 	expected = strings.TrimSpace(expected)
 	if expected == "" {
@@ -130,6 +134,57 @@ func (c *DNSChecker) checkTXT(ctx context.Context, fullName, expected string, ca
 	}
 	msg := fmt.Sprintf("TXT lookup failed: %v", lastErr)
 	return domain.DNSRecordFailed, &msg
+}
+
+// checkDKIM verifies the expected DKIM value appears in the TXT records at
+// the given fully-qualified name. DKIM keys exceed the 255-character per-
+// string DNS limit, so authoritative servers (e.g. Cloudflare) split them
+// into multiple adjacent character-strings that Go's LookupTXT surfaces as
+// separate slice elements; the published value is the concatenation of all
+// strings in order. Zone-file formatting artifacts (parentheses, extra
+// whitespace — how Stalwart-generated records are stored) are stripped from
+// both sides before a case-sensitive contains comparison.
+func (c *DNSChecker) checkDKIM(ctx context.Context, fullName, expected string) (domain.DNSRecordStatus, *string) {
+	expected = normalizeDKIM(expected)
+	if expected == "" {
+		msg := "empty DKIM expected value"
+		return domain.DNSRecordFailed, &msg
+	}
+
+	var lastErr error
+	for i := 0; i < c.attempts(); i++ {
+		lookupCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		records, err := c.Resolver.LookupTXT(lookupCtx, fullName)
+		cancel()
+		if err == nil {
+			joined := normalizeDKIM(strings.Join(records, ""))
+			if strings.Contains(joined, expected) {
+				return domain.DNSRecordVerified, nil
+			}
+			msg := "DKIM record value mismatch"
+			return domain.DNSRecordMismatch, &msg
+		}
+		lastErr = err
+		time.Sleep(500 * time.Millisecond)
+	}
+	msg := fmt.Sprintf("TXT lookup failed: %v", lastErr)
+	return domain.DNSRecordFailed, &msg
+}
+
+// dkimSpaceRe collapses runs of whitespace (tabs/newlines appear in
+// multi-line zone-file values) into single spaces before they are removed.
+var dkimSpaceRe = regexp.MustCompile(`\s+`)
+
+// normalizeDKIM strips formatting artifacts from a DKIM TXT value so dirty
+// stored values (zone-file form: parens, multi-space splits) compare equal
+// to live DNS responses. DKIM tag syntax has no significant spaces (the p=
+// payload is base64), so all whitespace is removed from both sides.
+func normalizeDKIM(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, `"`)  // outer quotes
+	s = strings.Trim(s, "()") // zone-file parens
+	s = dkimSpaceRe.ReplaceAllString(s, " ")
+	return strings.ReplaceAll(s, " ", "")
 }
 
 func (c *DNSChecker) attempts() int {
