@@ -106,13 +106,11 @@ Lihat TROUBLESHOOTING.md.
 - Berlaku juga untuk provider own-app lain: Nextcloud (PK 2), Odoo (PK 3), Stalwart Mail (PK 6).
 - `redirect_uris`/`grant_types`/`property_mappings` TIDAK berubah. Detail: `docs/authentik-setup.md` → "Sprint 1.2d Implicit Consent Flow".
 
+## Domain Onboarding + DKIM Mode Selection (Sprint 1.3 / 1.3b / 1.3-fix3)
+- Admin → Domains → Tambah Domain: nama + pilih Mode DKIM (RSA saja [default] / Ed25519 saja / Dual) dengan tooltip penjelasan per opsi. Pilih Ed25519 muncul warning merah (provider lama bisa reject).
+- Setup page `/admin/domains/{id}/setup`: tombol "Ubah Mode DKIM" → modal radio + warning → PATCH `/api/admin/domains/{id}` `{dkim_mode}`.
+- Semantik mode (live-verified Stalwart 0.16): `dkimManagement = {"@type":"Automatic","algorithms":{...}}`; rsa = hanya `Dkim1RsaSha256`, ed25519 = hanya `Dkim1Ed25519Sha256`, dual = keduanya. Nama algorithm BUKAN nilai `@type`.
+- Ubah mode = recreate domain Stalwart (key hanya digenerate saat create); portal domain id + record MX/SPF/DMARC tetap, DKIM di-regenerate, status `dns_in_progress`, verify ulang dari wizard.
+- Migration `00003_add_dkim_mode.sql`: kolom `domains.dkim_mode` default `rsa` + CHECK constraint; existing domain otomatis `rsa`.
+- End-to-end test bertag `e2e` (`internal/service/e2e_dkim_mode_test.go`) jalan di network compose dengan Stalwart+DB nyata; create 4 domain test lalu cleanup otomatis.
 
-
-## DNS Wizard + Domain Onboarding (Sprint 1.3)
-- URL: `/admin/domains` (CRUD list) + `/admin/domains/[id]/setup` (wizard 4 langkah).
-- Akses: superadmin (group `cloudsuite-superadmin`).
-- Fitur: CRUD domain + wizard MX -> SPF -> DKIM -> DMARC (copy + verify per record).
-- Backend: DB `portal` (PostgreSQL), Stalwart JMAP client (`x:Domain/set|get|query|destroy` via `POST /jmap`).
-- Verify: DNS lookup via Go `net.LookupMX` / `net.LookupTXT`.
-- Register domain ke Stalwart saat create (single-tenant, `tenant_id` NULL).
-- Wizard reusable component -> siap Phase 2 multi-tenant.

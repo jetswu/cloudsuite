@@ -599,3 +599,58 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 - `DNSResolver` dijadikan interface agar unit test bisa mock `LookupMX`/`LookupTXT` (`dns_checker_test.go`).
 ### Pencegahan
 - Selalu lookup ke FQDN (domain), bukan value/name relatif; normalisasi trailing dot + case sebelum compare.
+
+## Portal — DKIM multi-string TXT Cloudflare mismatch (Sprint 1.3-fix3)
+### Gejala
+- Record DKIM RSA status `mismatch`, `last_error: TXT record value mismatch`,
+  padahal record sudah di-copy persis dari wizard ke Cloudflare dan
+  Ed25519 (1 string) verified.
+### Root Cause
+- Cloudflare memecah TXT >255 char jadi 2 string (`"..." "..."`).
+- DB menyimpan expected value terkontaminasi format zone file Stalwart:
+  indentasi 4 spasi + trailing `)` ikut tersimpan (425 char vs 422 di DNS).
+- Checker lama verify per-element TXT (banding string[0] saja).
+### Fix
+- `dns_checker.go`: jalur DKIM join semua string TXT, lalu
+  `normalizeDKIM` dua sisi (trim quote/paren, collapse whitespace) +
+  `strings.Contains` satu arah (expected tersimpan di dalam value DNS).
+### Pencegahan
+- Verifikasi DKIM selalu gabungkan multi-string TXT sebelum compare;
+  jangan banding per-element.
+
+## Portal — Generator zone file Stalwart multi-line (Sprint 1.3-fix3)
+### Gejala
+- Expected value DKIM RSA di DB = 425 char berisi 4 spasi di tengah +
+  trailing `)`; sumber = zone file Stalwart yang multi-line.
+### Root Cause
+- `dns_records.go` parser continuation line pakai `stripQuotes()` yang
+  menyelamatkan indentasi + `)` sebagai konten; di zone nyata `)` menempel
+  DI DALAM string quote terakhir sehingga lolos `extractQuoted`.
+### Fix
+- Continuation parse via `extractQuoted`, collapse whitespace di `flush()`,
+  strip parens unconditional di `flush()` (base64/SPF/DMARC tidak pernah
+  punya paren valid). Test replikasi bentuk kotor produksi.
+### Pencegahan
+- Parser zone file harus di-test dengan fixture bentuk nyata Stalwart
+  (multi-line, indentasi, paren dalam quote), bukan fixture ideal.
+
+## Portal — Mode DKIM tidak berubah via update dkimManagement (Sprint 1.3b)
+### Gejala
+- Update domain existing ke mode lain: `dkimManagement.algorithms` berubah
+  di Stalwart, tapi zone file tidak pernah dapat selector algoritma baru
+  (60s+ polling). Destroy signature lama juga tidak memicu regenerasi.
+### Root Cause
+- Stalwart 0.16 Automatic DKIM hanya generate key saat CREATE domain.
+  Update `algorithms` atau destroy signature tidak backfill.
+  `Dkim1RsaSha256`/`Dkim1Ed25519Sha256` adalah NAMA ALGORITHM (key map
+  `algorithms`), bukan nilai `@type` — kirim sebagai `@type` gagal
+  `invalidPatch: Missing or invalid '@type' property`.
+### Fix
+- Mode change = recreate domain Stalwart dengan nama sama: destroy lama
+  (signature dulu, else `objectIsLinked`) → register baru dengan
+  `{"@type":"Automatic","algorithms":{...}}` mode baru → regenerate DKIM
+  records DB dari zone baru → status `dns_in_progress`. Gagal register →
+  rollback register mode lama.
+### Pencegahan
+- Anggap key generation Stalwart hanya terjadi di create; untuk perubahan
+  konfigurasi yang butuh key baru, recreate object, jangan update.

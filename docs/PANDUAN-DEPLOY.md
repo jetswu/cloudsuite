@@ -1106,48 +1106,54 @@ SSO manual test: buka portal → "Sign in with CloudSuite" → login Authentik �
 
 ---
 
+## Bagian 12e — Domain Onboarding + DKIM Mode (Sprint 1.3 / 1.3b)
 
-## Bagian 12e — DNS Wizard + Domain Onboarding (Sprint 1.3)
+### Deploy
 
-### Prasyarat
+    cd /opt/cloudsuite/infra/docker
+    docker compose --env-file /opt/cloudsuite/.env up -d --build portal-backend portal-frontend
 
-- Backend + frontend Sprint 1.3 (commit `f2c46ae`) sudah terdeploy (Bagian 12d).
-- DB `portal` + migration `00001_create_domains.sql`, `00002_create_dns_records.sql` (otomatis di startup backend via goose).
-- `/opt/cloudsuite/.env` punya `STALWART_API_URL`, `STALWART_API_KEY`, `PORTAL_DB_*` (host/port/name/user/password).
+- Migration `00003_add_dkim_mode.sql` (kolom `domains.dkim_mode`, default
+  `rsa`) jalan otomatis saat startup backend — lihat log
+  `goose: successfully migrated database to version: 3`.
 
-### Deploy env
+### Verify
 
-    STALWART_API_URL=http://cloudsuite-stalwart:8080
-    PORTAL_DB_HOST=postgres
-    PORTAL_DB_PORT=5432
-    PORTAL_DB_NAME=portal
-    PORTAL_DB_USER=cloudsuite
-    PORTAL_DB_PASSWORD=${POSTGRES_PASSWORD}
+    docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c "\d domains" | grep dkim
+    # kolom dkim_mode + constraint chk_dkim_mode (rsa|ed25519|dual)
+    docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c "SELECT name, dkim_mode, status FROM domains;"
 
-Compose `portal-backend` harus meneruskan ke-7 env di atas.
+- UI: Admin → Domains → Tambah Domain → radio Mode DKIM (RSA default,
+  tooltip per opsi, warning merah untuk Ed25519).
+- Setup page domain → tombol "Ubah Mode DKIM" → PATCH
+  `/api/admin/domains/{id}` → record DKIM regenerate, status kembali
+  `dns_in_progress` → verify ulang dari wizard.
 
-### Migration
+### Test end-to-end (bertag e2e, Stalwart + DB nyata, auto-cleanup)
 
-- Otomatis di startup backend (`goose`), log: `goose: successfully migrated database to version: 2`.
-- Verify: `docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c "\dt"` -> `domains`, `dns_records`, `goose_db_version`.
+    docker run --rm \
+      -v /home/hermes/cloudsuite/portal/backend:/app \
+      -v cs_gomodcache:/go/pkg/mod -v cs_gobuildcache:/root/.cache/go-build \
+      --network cloudsuite-net -w /app \
+      -e PORTAL_DB_HOST=postgres -e PORTAL_DB_PORT=5432 -e PORTAL_DB_NAME=portal \
+      -e PORTAL_DB_USER=cloudsuite -e PORTAL_DB_PASSWORD="..." \
+      -e STALWART_API_URL=http://cloudsuite-stalwart:8080 \
+      -e STALWART_API_KEY="..." \
+      golang:1.23-alpine go test -tags e2e -run TestE2EDKIMModeSelection -v ./internal/service/
 
-### Akses & otorisasi
+### Troubleshooting cepat
 
-- URL: `https://portal.<domain>/admin/domains`.
-- Superadmin only (group `cloudsuite-superadmin`); non-superadmin -> redirect `/dashboard`, API -> 403.
-
-### Smoke test API
-
-    # Health
-    docker exec cloudsuite-portal-backend wget -qO- http://localhost:8080/api/health
-    # -> {"status":"ok"}
-
-    # Tanpa token -> 401
-    curl -sk https://portal.<domain>/api/admin/domains -w 
-%{http_code}
-
+- Create domain gagal `no id in response` → mode DKIM terkirim salah format;
+  `Dkim1RsaSha256`/`Dkim1Ed25519Sha256` adalah nama algorithm (key map
+  `algorithms` di `dkimManagement`), BUKAN nilai `@type`.
+- Ubah mode tidak menghasilkan record baru → Stalwart hanya generate key
+  saat create domain; mode change di portal me-recreate domain Stalwart
+  (destroy + register ulang), bukan update.
+- Destroy domain `objectIsLinked` → destroy `x:DkimSignature` milik domain
+  dulu (client sudah melakukannya otomatis).
 
 ---
+
 ## Bagian 13 — Backup (Opsional)
 
 Status: [TBC] — prosedur backup lengkap belum ada (TODO staging).
