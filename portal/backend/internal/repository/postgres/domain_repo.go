@@ -28,12 +28,12 @@ func NewDomainRepo(pool *pgxpool.Pool) *DomainRepo {
 	return &DomainRepo{pool: pool}
 }
 
-const domainColumns = `id, name, tenant_id, status, stalwart_domain_id, verified_at, created_at, updated_at`
+const domainColumns = `id, name, tenant_id, status, stalwart_domain_id, dkim_mode, verified_at, created_at, updated_at`
 
 func scanDomain(row pgx.Row) (*domain.Domain, error) {
 	var d domain.Domain
 	err := row.Scan(
-		&d.ID, &d.Name, &d.TenantID, &d.Status, &d.StalwartDomainID,
+		&d.ID, &d.Name, &d.TenantID, &d.Status, &d.StalwartDomainID, &d.DKIMMode,
 		&d.VerifiedAt, &d.CreatedAt, &d.UpdatedAt,
 	)
 	if err != nil {
@@ -49,9 +49,9 @@ func scanDomain(row pgx.Row) (*domain.Domain, error) {
 // database default if empty).
 func (r *DomainRepo) Create(ctx context.Context, d domain.Domain) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO domains (id, name, tenant_id, status, stalwart_domain_id, verified_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
-		d.ID, d.Name, d.TenantID, d.Status, d.StalwartDomainID, d.VerifiedAt,
+		INSERT INTO domains (id, name, tenant_id, status, stalwart_domain_id, dkim_mode, verified_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		d.ID, d.Name, d.TenantID, d.Status, d.StalwartDomainID, d.DKIMMode, d.VerifiedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -104,9 +104,9 @@ func (r *DomainRepo) List(ctx context.Context) ([]domain.Domain, error) {
 func (r *DomainRepo) Update(ctx context.Context, d domain.Domain) error {
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE domains
-		SET name = $2, status = $3, stalwart_domain_id = $4, verified_at = $5, updated_at = now()
+		SET name = $2, status = $3, stalwart_domain_id = $4, dkim_mode = $5, verified_at = $6, updated_at = now()
 		WHERE id = $1`,
-		d.ID, d.Name, d.Status, d.StalwartDomainID, d.VerifiedAt,
+		d.ID, d.Name, d.Status, d.StalwartDomainID, d.DKIMMode, d.VerifiedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("update domain: %w", err)

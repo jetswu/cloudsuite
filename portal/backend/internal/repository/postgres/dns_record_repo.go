@@ -115,3 +115,16 @@ func (r *DNSRecordRepo) UpdateStatus(ctx context.Context, id string, status doma
 	}
 	return nil
 }
+
+// DeleteByPurpose removes all records of the given purpose for a domain.
+// Returns the number of rows removed.
+func (r *DNSRecordRepo) DeleteByPurpose(ctx context.Context, domainID string, purpose domain.DNSRecordPurpose) (int64, error) {
+	tag, err := r.pool.Exec(ctx,
+		`DELETE FROM dns_records WHERE domain_id = $1 AND purpose = $2`,
+		domainID, purpose,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete dns records by purpose: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}

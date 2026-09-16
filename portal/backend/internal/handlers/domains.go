@@ -31,6 +31,7 @@ func (d *DomainHandler) Routes(r chi.Router) {
 		domains.Get("/", d.listDomains)
 		domains.Post("/", d.createDomain)
 		domains.Get("/{id}", d.getDomain)
+		domains.Patch("/{id}", d.updateDomain)
 		domains.Delete("/{id}", d.deleteDomain)
 		domains.Post("/{id}/verify", d.verifyDomain)
 		domains.Get("/{id}/records", d.listRecords)
@@ -56,7 +57,7 @@ func (d *DomainHandler) createDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detail, err := d.svc.CreateDomain(r.Context(), req.Name)
+	detail, err := d.svc.CreateDomain(r.Context(), req.Name, req.DKIMMode)
 	if err != nil {
 		// Distinguish validation errors from upstream failures.
 		if isUserError(err) {
@@ -78,6 +79,30 @@ func (d *DomainHandler) getDomain(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "get domain", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+// updateDomain handles PATCH /api/admin/domains/{id}: switching the DKIM
+// mode regenerates the domain's DKIM DNS records (Sprint 1.3b).
+func (d *DomainHandler) updateDomain(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req domain.UpdateDomainRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	detail, err := d.svc.UpdateDomainDKIMMode(r.Context(), id, req.DKIMMode)
+	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "domain not found"})
+			return
+		}
+		if isUserError(err) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeError(w, http.StatusBadGateway, "update domain dkim mode", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
@@ -133,5 +158,7 @@ func isUserError(err error) bool {
 	msg := err.Error()
 	return msg == "invalid domain name" ||
 		msg == "no onboarding records generated from zone file" ||
+		strings.HasPrefix(msg, "invalid dkim mode") ||
+		msg == "domain has no stalwart registration" ||
 		strings.Contains(msg, "already exists")
 }

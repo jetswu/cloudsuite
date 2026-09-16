@@ -24,4 +24,8 @@ type DNSRecordRepository interface {
 	CreateBatch(ctx context.Context, records []domain.DNSRecord) error
 	ListByDomain(ctx context.Context, domainID string) ([]domain.DNSRecord, error)
 	UpdateStatus(ctx context.Context, id string, status domain.DNSRecordStatus, errMsg *string) error
+	// DeleteByPurpose removes every record of the given purpose for a domain
+	// (used when DKIM records are regenerated after a mode change). Returns
+	// the number of rows removed.
+	DeleteByPurpose(ctx context.Context, domainID string, purpose domain.DNSRecordPurpose) (int64, error)
 }

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/jetswu/cloudsuite/portal/backend/internal/domain"
 )
 
 const (
@@ -63,10 +65,11 @@ type jmapResponse struct {
 }
 
 // RegisterDomain creates a domain in Stalwart with Manual DNS + certificate
-// management and Automatic DKIM management, then reads back the created
-// object so its DNS zone file is available to generate the portal's DNS
-// records. Returns the Stalwart domain (id + name + zone file).
-func (c *Client) RegisterDomain(ctx context.Context, name string) (Domain, error) {
+// management and the requested DKIM management mode (Sprint 1.3b), then
+// reads back the created object so its DNS zone file is available to
+// generate the portal's DNS records. Returns the Stalwart domain
+// (id + name + zone file).
+func (c *Client) RegisterDomain(ctx context.Context, name string, mode domain.DKIMMode) (Domain, error) {
 	// 1. Create. The create key ("t1") is client-chosen and echoed back in
 	//    created.t1.id.
 	createArgs := map[string]interface{}{
@@ -75,7 +78,7 @@ func (c *Client) RegisterDomain(ctx context.Context, name string) (Domain, error
 			"t1": map[string]interface{}{
 				"name":                  name,
 				"isEnabled":             true,
-				"dkimManagement":        map[string]interface{}{"@type": "Automatic"},
+				"dkimManagement":        mapDKIMMode(mode),
 				"dnsManagement":         map[string]interface{}{"@type": "Manual"},
 				"certificateManagement": map[string]interface{}{"@type": "Manual"},
 			},
@@ -103,18 +106,22 @@ func (c *Client) RegisterDomain(ctx context.Context, name string) (Domain, error
 	//    so the portal does not persist an empty DKIM set. On timeout the
 	//    domain is still returned — creation must not fail because of a slow
 	//    DKIM generation.
-	d, err := c.waitForDKIM(ctx, stalwartID)
+	d, err := c.waitForDKIM(ctx, stalwartID, mode)
 	if err != nil {
 		return Domain{}, fmt.Errorf("read created domain: %w", err)
 	}
 	return d, nil
 }
 
-// waitForDKIM polls the created domain until its dnsZoneFile contains the
-// DKIM selector records. Stalwart writes those asynchronously (Automatic DKIM
-// management), so the first getDomain may return a zone without them. It
-// gives up after ~10s (5 attempts, 2s apart) and returns the last zone seen.
-func (c *Client) waitForDKIM(ctx context.Context, id string) (Domain, error) {
+// waitForDKIM polls the created/updated domain until its dnsZoneFile contains
+// the DKIM selector records for every algorithm the requested mode requires.
+// Stalwart writes those asynchronously (Automatic DKIM management), so the
+// first getDomain may return a zone without them — and after a mode switch
+// the OLD algorithm's record satisfies a naive "_domainkey" check while the
+// new signature is still being generated. Matching on the k= algorithm tags
+// avoids returning early with a stale DKIM set. It gives up after ~10s
+// (5 attempts, 2s apart) and returns the last zone seen.
+func (c *Client) waitForDKIM(ctx context.Context, id string, mode domain.DKIMMode) (Domain, error) {
 	const (
 		maxAttempts = 5
 		delay       = 2 * time.Second
@@ -129,7 +136,7 @@ func (c *Client) waitForDKIM(ctx context.Context, id string) (Domain, error) {
 		if err != nil {
 			return Domain{}, err
 		}
-		if strings.Contains(last.DNSZoneFile, "_domainkey") {
+		if zoneHasAlgorithms(last.DNSZoneFile, mode) {
 			return last, nil
 		}
 		time.Sleep(delay)
@@ -137,8 +144,52 @@ func (c *Client) waitForDKIM(ctx context.Context, id string) (Domain, error) {
 
 	log.Warn().
 		Str("domain_id", id).
-		Msg("DKIM records did not appear in zone file after polling; proceeding with last zone (may be empty)")
+		Str("mode", string(mode)).
+		Msg("DKIM records for requested algorithm(s) did not appear in zone file after polling; proceeding with last zone (may be incomplete)")
 	return last, nil
+}
+
+// zoneHasAlgorithms reports whether the zone file carries DKIM TXT records
+// for every algorithm required by the mode (k=rsa / k=ed25519 tags).
+func zoneHasAlgorithms(zone string, mode domain.DKIMMode) bool {
+	hasRSA := strings.Contains(zone, "k=rsa")
+	hasEd := strings.Contains(zone, "k=ed25519")
+	switch mode {
+	case domain.DKIMModeEd25519:
+		return hasEd
+	case domain.DKIMModeDual:
+		return hasRSA && hasEd
+	default:
+		return hasRSA
+	}
+}
+
+// mapDKIMMode maps the portal DKIMMode onto Stalwart's dkimManagement
+// object. Stalwart 0.16 (verified against the live server 2026-09-16) models
+// DKIM management as @type "Automatic" with an `algorithms` map of enabled
+// algorithm names; "Dkim1RsaSha256" / "Dkim1Ed25519Sha256" are algorithm
+// names, NOT @type values (passing them as @type fails with invalidPatch:
+// "Missing or invalid '@type' property"). Restricting the map to a single
+// algorithm yields "RSA only" / "Ed25519 only" signing.
+func mapDKIMMode(mode domain.DKIMMode) map[string]interface{} {
+	algorithms := map[string]interface{}{ // default: rsa only
+		"Dkim1RsaSha256": true,
+	}
+	switch mode {
+	case domain.DKIMModeEd25519:
+		algorithms = map[string]interface{}{
+			"Dkim1Ed25519Sha256": true,
+		}
+	case domain.DKIMModeDual:
+		algorithms = map[string]interface{}{
+			"Dkim1RsaSha256":      true,
+			"Dkim1Ed25519Sha256": true,
+		}
+	}
+	return map[string]interface{}{
+		"@type":      "Automatic",
+		"algorithms": algorithms,
+	}
 }
 
 // ListDomains returns all Stalwart domains (id + name).
