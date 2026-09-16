@@ -6,6 +6,7 @@ package domain
 // User is the Authentik core user read model.
 type User struct {
 	PK          int        `json:"pk"`
+	UID         string     `json:"uid"`
 	Username    string     `json:"username"`
 	Name        string     `json:"name"`
 	Email       string     `json:"email"`
@@ -65,8 +66,9 @@ type CreateUserRequest struct {
 // CreateUserResponse is returned by POST /api/admin/users. It carries the
 // created user plus the plaintext password, shown to the admin exactly once.
 type CreateUserResponse struct {
-	User     User   `json:"user"`
-	Password string `json:"password"`
+	User               User `json:"user"`
+	Password           string `json:"password"`
+	ProvisioningQueued bool   `json:"provisioning_queued"`
 }
 
 // GroupRequest is the create/update payload for a core group.

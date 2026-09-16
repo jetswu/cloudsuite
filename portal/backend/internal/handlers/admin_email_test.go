@@ -58,7 +58,7 @@ func (f *fakeRepo) RemoveGroupMember(ctx context.Context, uuid string, pk int) e
 // routeCreateUser mounts createUser on a chi router (no auth middleware; we test
 // the validation logic directly).
 func routeCreateUser(repo *fakeRepo) http.Handler {
-	a := NewAdminHandler(repo)
+	a := NewAdminHandler(repo, nil)
 	r := chi.NewRouter()
 	r.Post("/api/admin/users", a.createUser)
 	return r

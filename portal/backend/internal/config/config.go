@@ -28,6 +28,18 @@ type Config struct {
 	// Stalwart mail server (Sprint 1.3).
 	StalwartAPIURL string
 	StalwartAPIKey string
+
+	// Provisioning pipeline (Sprint 1.4a).
+	RedisAddr     string
+	RedisPassword string
+	NCBaseURL     string // nextcloud OCS base, e.g. http://nextcloud
+	NCDBName      string
+	NCAdminUser   string
+	NCAdminPass   string
+	OdooBaseURL   string
+	OdooDB        string
+	OdooLogin     string
+	OdooPassword  string
 }
 
 // Load reads config from environment with sane defaults.
@@ -49,6 +61,18 @@ func Load() (*Config, error) {
 
 		StalwartAPIURL: os.Getenv("STALWART_API_URL"),
 		StalwartAPIKey: os.Getenv("STALWART_API_KEY"),
+
+		RedisAddr:     getEnv("REDIS_ADDR", ""),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
+		NCBaseURL:     getEnv("NEXTCLOUD_BASE_URL", "http://nextcloud"),
+		NCDBName:      getEnv("NEXTCLOUD_DB_NAME", "nextcloud"),
+		NCAdminUser:   os.Getenv("NEXTCLOUD_ADMIN_USER"),
+		NCAdminPass:   os.Getenv("NEXTCLOUD_ADMIN_PASSWORD"),
+
+		OdooBaseURL:  getEnv("ODOO_BASE_URL", "https://erp.idchsuite.my.id"),
+		OdooDB:       getEnv("ODOO_DB", "odoo"),
+		OdooLogin:    getEnv("ODOO_LOGIN", "admin"),
+		OdooPassword: os.Getenv("ODOO_PASSWORD"),
 	}
 	if cfg.AuthentikIssuer == "" {
 		return nil, fmt.Errorf("AUTHENTIK_ISSUER is required")

@@ -13,6 +13,7 @@ import (
 
 	"github.com/jetswu/cloudsuite/portal/backend/internal/auth"
 	"github.com/jetswu/cloudsuite/portal/backend/internal/domain"
+	"github.com/jetswu/cloudsuite/portal/backend/internal/provisioning"
 	"github.com/jetswu/cloudsuite/portal/backend/internal/repository/authentik"
 )
 
@@ -29,11 +30,13 @@ func validEmail(v string) bool {
 // It depends only on the authentik.Repository interface.
 type AdminHandler struct {
 	repo authentik.Repository
+	prov *provisioning.Service // nil = provisioning disabled (1.4a)
 }
 
-// NewAdminHandler wires the admin handler to its repository.
-func NewAdminHandler(repo authentik.Repository) *AdminHandler {
-	return &AdminHandler{repo: repo}
+// NewAdminHandler wires the admin handler to its repository. prov may be nil,
+// which disables the provisioning side-effects.
+func NewAdminHandler(repo authentik.Repository, prov *provisioning.Service) *AdminHandler {
+	return &AdminHandler{repo: repo, prov: prov}
 }
 
 // RequireSuperAdmin guards routes that require membership in the super-admin
@@ -109,6 +112,16 @@ func (a *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Provisioning precheck (1.4a): reject invalid addresses and unregistered
+	// mail domains before the Authentik user exists. Provisioning itself is
+	// asynchronous and happens in the worker.
+	if a.prov != nil {
+		if err := a.prov.Precheck(r.Context(), req.Email); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
 	user, err := a.repo.CreateUser(r.Context(), req.UserRequest)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "create user", err)
@@ -118,9 +131,23 @@ func (a *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "set user password", err)
 		return
 	}
+
+	// Trigger provisioning (1.4a): enqueue stalwart/nextcloud/odoo jobs. A
+	// failure here must not fail the request — the jobs/state persist in the
+	// portal DB and the worker sweep re-enqueues lost messages.
+	provisioningQueued := false
+	if a.prov != nil {
+		if _, err := a.prov.ProvisionUser(r.Context(), user.PK, user.Email); err != nil {
+			log.Error().Err(err).Int("user_id", user.PK).Msg("provisioning enqueue failed (user created; worker will retry)")
+		} else {
+			provisioningQueued = true
+		}
+	}
+
 	writeJSON(w, http.StatusCreated, domain.CreateUserResponse{
-		User:     user,
-		Password: req.Password,
+		User:              user,
+		Password:          req.Password,
+		ProvisioningQueued: provisioningQueued,
 	})
 }
 
