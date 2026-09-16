@@ -53,6 +53,16 @@ func GenerateDNSRecords(domainName string, zoneFile string) ([]domain.DNSRecord,
 		switch curType {
 		case "TXT":
 			val := strings.TrimSpace(curTXT.String())
+			// Collapse whitespace runs (indentation of multi-line
+			// zone blocks, tabs) into single spaces so the stored
+			// value is clean: "v=DKIM1; k=rsa; p=...".
+			val = strings.Join(strings.Fields(val), " ")
+			// Zone-file parens can leak INSIDE the quoted content
+			// (Stalwart glues the closing ")" onto the last string).
+			// DKIM base64, SPF, and DMARC values never legitimately
+			// contain parens, so drop them.
+			val = strings.ReplaceAll(val, "(", "")
+			val = strings.ReplaceAll(val, ")", "")
 			rec := domain.DNSRecord{RecordType: "TXT", Name: ownerName, Value: val, IsRequired: true}
 			switch {
 			case ownerName == "@" && strings.HasPrefix(val, "v=spf1"):
@@ -87,9 +97,11 @@ func GenerateDNSRecords(domainName string, zoneFile string) ([]domain.DNSRecord,
 			continue
 		}
 
-		// Continuation of a parenthesised TXT value: strip quotes, append.
+		// Continuation of a parenthesised TXT value: append only the content
+		// INSIDE the quoted strings. The line's indentation and the closing
+		// ")" are zone-file formatting and must NOT leak into the value.
 		if inParens {
-			curTXT.WriteString(stripQuotes(line))
+			curTXT.WriteString(extractQuoted(line))
 			if strings.Contains(line, ")") {
 				inParens = false
 				flush()
@@ -211,8 +223,4 @@ func extractQuoted(s string) string {
 	return b.String()
 }
 
-// stripQuotes removes all double-quote characters from a continuation line
-// (inside a parenthesised TXT block) so only the value content is appended.
-func stripQuotes(s string) string {
-	return strings.ReplaceAll(s, `"`, "")
-}
+

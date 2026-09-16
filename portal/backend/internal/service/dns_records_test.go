@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jetswu/cloudsuite/portal/backend/internal/domain"
@@ -61,22 +62,68 @@ func TestGenerateDNSRecords(t *testing.T) {
 
 	// DKIM: two records expected (ed25519 + rsa)
 	dkimCount := 0
+	var rsaRec *domain.DNSRecord
 	for _, r := range recs {
 		if r.Purpose == domain.PurposeDKIM {
 			dkimCount++
 			if r.RecordType != "TXT" || !startsWith(r.Value, "v=DKIM1") {
 				t.Errorf("DKIM record = %+v, want TXT / v=DKIM1...", r)
 			}
+			if strings.HasSuffix(r.Name, "v1-rsa-20260915._domainkey") ||
+				r.Name == "v1-rsa-20260915._domainkey" {
+				rsa := r
+				rsaRec = &rsa
+			}
 		}
 	}
 	if dkimCount != 2 {
 		t.Errorf("DKIM count = %d, want 2 (ed25519 + rsa)", dkimCount)
+	}
+
+	// RSA value must be clean: no paren artifact, no whitespace runs, and
+	// the two quoted strings of the parenthesised zone block joined without
+	// injected characters (split point "...Avqt" + "c5B4..." → "Avqtc5B4").
+	if rsaRec == nil {
+		t.Fatal("missing v1-rsa-20260915._domainkey record")
+	}
+	if strings.Contains(rsaRec.Value, ")") {
+		t.Errorf("RSA DKIM value contains zone-file paren: %q", rsaRec.Value)
+	}
+	if strings.Contains(rsaRec.Value, "  ") {
+		t.Errorf("RSA DKIM value contains whitespace run: %q", rsaRec.Value)
+	}
+	if !strings.Contains(rsaRec.Value, "Avqtc5B4") {
+		t.Errorf("RSA DKIM value not joined at split point: %q", rsaRec.Value)
 	}
 }
 
 func TestGenerateDNSRecordsEmpty(t *testing.T) {
 	if _, err := GenerateDNSRecords("", "anything"); err == nil {
 		t.Fatal("expected error for empty domain name")
+	}
+}
+
+// TestGenerateDNSRecordsDirtyZoneFormat replicates the production shape seen
+// in Stalwart zone output for long Cloudflare-split RSA keys: indented
+// continuation lines and a closing paren glued to the END of the last quoted
+// string. The generator must produce a clean single-space value.
+func TestGenerateDNSRecordsDirtyZoneFormat(t *testing.T) {
+	dirtyZone := `v1-rsa-20260915._domainkey.test-domain.local. IN TXT (
+    "v=DKIM1; k=rsa; h=sha256; p=AAAA1111"
+    " BBBB2222CCCC)"
+)
+test-domain.local. IN TXT "v=spf1 mx -all"
+`
+	recs, err := GenerateDNSRecords("test-domain.local", dirtyZone)
+	if err != nil {
+		t.Fatalf("GenerateDNSRecords: %v", err)
+	}
+	if len(recs) != 2 || recs[0].Purpose != domain.PurposeDKIM {
+		t.Fatalf("records = %+v, want 2 records (DKIM + SPF), DKIM first", recs)
+	}
+	want := "v=DKIM1; k=rsa; h=sha256; p=AAAA1111 BBBB2222CCCC"
+	if recs[0].Value != want {
+		t.Errorf("value = %q, want %q", recs[0].Value, want)
 	}
 }
 
