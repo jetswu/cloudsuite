@@ -77,11 +77,16 @@ export type DNSRecordStatus = "pending" | "verified" | "failed" | "mismatch"
 
 export type DNSRecordPurpose = "mx" | "spf" | "dkim" | "dmarc"
 
+// Sprint 1.3b: DKIM signing mode. rsa = Dkim1RsaSha256 (portal default),
+// ed25519 = Dkim1Ed25519Sha256, dual = Automatic (Stalwart signs both).
+export type DKIMMode = "rsa" | "ed25519" | "dual"
+
 export type PortalDomain = {
   id: string
   name: string
   tenant_id?: string | null
   status: DomainStatus
+  dkim_mode: DKIMMode
   stalwart_domain_id?: string | null
   verified_at?: string | null
   created_at: string
@@ -111,6 +116,11 @@ export type DomainDetail = {
 
 export type CreateDomainRequest = {
   name: string
+  dkim_mode?: DKIMMode
+}
+
+export type UpdateDomainModeRequest = {
+  dkim_mode: DKIMMode
 }
 
 const BASE = "/api/admin"
@@ -231,6 +241,14 @@ export const adminApi = {
   verifyDomain: (token: string, id: string) =>
     request<DomainDetail>(`/domains/${id}/verify`, token, {
       method: "POST",
+    }),
+
+  updateDomainMode: (token: string, id: string, mode: DKIMMode) =>
+    request<DomainDetail>(`/domains/${id}`, token, {
+      method: "PATCH",
+      body: JSON.stringify({
+        dkim_mode: mode,
+      } satisfies UpdateDomainModeRequest),
     }),
 
   listDNSRecords: (token: string, id: string) =>

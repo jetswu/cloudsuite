@@ -23,8 +23,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DKIMModeSelector } from "@/components/admin/dkim-mode-selector"
 import { useDomains } from "@/hooks/use-domains"
-import { adminApi, type PortalDomain } from "@/lib/api"
+import { adminApi, type DKIMMode, type PortalDomain } from "@/lib/api"
 
 function statusLabel(status: PortalDomain["status"]): string {
   switch (status) {
@@ -76,6 +77,7 @@ export function DomainsManager({ accessToken }: { accessToken?: string }) {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [name, setName] = useState("")
+  const [dkimMode, setDkimMode] = useState<DKIMMode>("rsa")
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<PortalDomain | null>(null)
@@ -85,10 +87,14 @@ export function DomainsManager({ accessToken }: { accessToken?: string }) {
     setBusy(true)
     setActionError(null)
     try {
-      const detail = await adminApi.createDomain(accessToken, { name })
+      const detail = await adminApi.createDomain(accessToken, {
+        name,
+        dkim_mode: dkimMode,
+      })
       setData((prev) => [detail.domain, ...prev])
       setCreateOpen(false)
       setName("")
+      setDkimMode("rsa")
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : "Gagal membuat domain.",
@@ -229,15 +235,23 @@ export function DomainsManager({ accessToken }: { accessToken?: string }) {
               akan dibuat otomatis.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="contoh: sman1.sch.id"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void handleCreate()
-              }}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="contoh: sman1.sch.id"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleCreate()
+                }}
+              />
+            </div>
+            <DKIMModeSelector
+              value={dkimMode}
+              onChange={setDkimMode}
+              showEd25519Warning
+              disabled={busy}
             />
           </div>
           <DialogFooter>

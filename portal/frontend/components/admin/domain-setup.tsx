@@ -10,11 +10,26 @@ import {
   Loader2,
   RefreshCw,
   ShieldCheck,
+  Settings2,
   XCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { adminApi, type DNSRecord, type DomainDetail } from "@/lib/api"
+import { DKIMModeSelector } from "@/components/admin/dkim-mode-selector"
+import {
+  adminApi,
+  type DKIMMode,
+  type DNSRecord,
+  type DomainDetail,
+} from "@/lib/api"
 
 const STEP_ORDER = ["mx", "spf", "dkim", "dmarc"] as const
 
@@ -30,6 +45,12 @@ const STEP_DESC: Record<string, string> = {
   spf: "Izinkan server mail mengirim atas nama domain.",
   dkim: "Tanda tangan email agar tidak dianggap spam.",
   dmarc: "Kebijakan untuk email gagal autentikasi.",
+}
+
+const DKIM_MODE_LABEL: Record<DKIMMode, string> = {
+  rsa: "RSA",
+  ed25519: "Ed25519",
+  dual: "Dual (RSA + Ed25519)",
 }
 
 type RecordState = "pending" | "verified" | "failed" | "mismatch"
@@ -70,6 +91,9 @@ export function DomainSetup({
   const [error, setError] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
+  const [modeDialogOpen, setModeDialogOpen] = useState(false)
+  const [newMode, setNewMode] = useState<DKIMMode>("rsa")
+  const [savingMode, setSavingMode] = useState(false)
 
   const load = useCallback(async () => {
     if (!accessToken) {
@@ -134,6 +158,20 @@ export function DomainSetup({
     }
   }
 
+  async function saveMode() {
+    if (!accessToken || !detail) return
+    setSavingMode(true)
+    setError(null)
+    try {
+      setDetail(await adminApi.updateDomainMode(accessToken, domainId, newMode))
+      setModeDialogOpen(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengubah mode DKIM.")
+    } finally {
+      setSavingMode(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -170,7 +208,14 @@ export function DomainSetup({
           Setup DNS — {domainName}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Publikasikan keempat record di penyedia DNS pelanggan, lalu verifikasi.
+          Publikasikan record di penyedia DNS pelanggan, lalu verifikasi.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Mode DKIM:{" "}
+          <span className="font-medium text-foreground">
+            {DKIM_MODE_LABEL[detail.domain.dkim_mode] ??
+              detail.domain.dkim_mode}
+          </span>
         </p>
       </header>
 
@@ -210,6 +255,16 @@ export function DomainSetup({
       </ol>
 
       <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          onClick={() => {
+            setNewMode(detail.domain.dkim_mode)
+            setModeDialogOpen(true)
+          }}
+        >
+          <Settings2 className="size-4" aria-hidden />
+          Ubah Mode DKIM
+        </Button>
         <Button onClick={verifyAll} disabled={verifying}>
           {verifying ? (
             <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -225,6 +280,40 @@ export function DomainSetup({
           </Link>
         </Button>
       </div>
+
+      <Dialog open={modeDialogOpen} onOpenChange={setModeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ubah Mode DKIM</DialogTitle>
+            <DialogDescription>
+              Mode baru akan me-regenerate record DNS DKIM. MX, SPF, dan DMARC
+              tidak berubah; status record DKIM kembali pending hingga
+              diverifikasi ulang.
+            </DialogDescription>
+          </DialogHeader>
+          <DKIMModeSelector
+            value={newMode}
+            onChange={setNewMode}
+            showEd25519Warning
+            disabled={savingMode}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setModeDialogOpen(false)}
+              disabled={savingMode}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={saveMode}
+              disabled={savingMode || newMode === detail.domain.dkim_mode}
+            >
+              {savingMode ? "Menyimpan…" : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
