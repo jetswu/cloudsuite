@@ -338,6 +338,44 @@ services:
       retries: 3
       start_period: 30s
 
+  portal-worker:
+    build:
+      context: /opt/cloudsuite/portal/backend
+      dockerfile: Dockerfile.worker
+    image: cloudsuite-portal-worker:1.0
+    container_name: cloudsuite-portal-worker
+    restart: unless-stopped
+    depends_on:
+      - portal-backend
+    environment:
+      AUTHENTIK_ISSUER: ${PORTAL_AUTHENTIK_ISSUER}
+      AUTHENTIK_CLIENT_ID: ${PORTAL_AUTHENTIK_CLIENT_ID}
+      AUTHENTIK_API_URL: ${AUTHENTIK_API_URL}
+      AUTHENTIK_API_TOKEN: ${AUTHENTIK_API_TOKEN}
+      STALWART_API_URL: ${STALWART_API_URL}
+      STALWART_API_KEY: ${STALWART_API_KEY}
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NEXTCLOUD_BASE_URL: https://drive.idchsuite.my.id
+      NEXTCLOUD_DB_NAME: ${NEXTCLOUD_DB_NAME}
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      ODOO_BASE_URL: http://odoo:8069
+      ODOO_DB: ${ODOO_DB_NAME}
+      ODOO_LOGIN: admin
+      ODOO_PASSWORD: ${ODOO_ADMIN_PASSWORD}
+      PORTAL_DB_HOST: ${PORTAL_DB_HOST}
+      PORTAL_DB_PORT: ${PORTAL_DB_PORT}
+      PORTAL_DB_NAME: ${PORTAL_DB_NAME}
+      PORTAL_DB_USER: ${PORTAL_DB_USER}
+      PORTAL_DB_PASSWORD: ${PORTAL_DB_PASSWORD}
+      LOG_LEVEL: info
+      TZ: Asia/Jakarta
+    networks:
+      - cloudsuite-net
+    mem_limit: 256m
+    cpus: 0.25
+
 networks:
   cloudsuite-net:
     external: true
