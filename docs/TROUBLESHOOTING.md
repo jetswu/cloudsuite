@@ -723,3 +723,35 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 - `NEXTCLOUD_BASE_URL` wajib host canonical `https://drive.idchsuite.my.id`.
   Base URL internal `http://nextcloud` di-redirect ke halaman HTML → parsing
   OCS gagal.
+
+### Portal: provisioning trigger silently skipped (tanpa error)
+- Gejala: user baru dibuat di Portal/Authentik, tapi `user_provisioning` dan
+  `provisioning_jobs` kosong; log portal-backend tidak ada error apa pun.
+- Penyebab: env `REDIS_ADDR` tidak ada di blok service portal-backend pada
+  compose → `getEnv("REDIS_ADDR", "")` kosong → provSvc nil → enqueue di-skip
+  diam-diam (silent skip, tidak pernah log error).
+- Diagnosa: `docker logs cloudsuite-portal-backend | grep "provisioning pipeline"`.
+  Sehat: `"provisioning pipeline enabled"` dengan `"redis":"redis:6379"`.
+  Sakit: warn `REDIS_ADDR/STALWART_API_URL not set; provisioning disabled`.
+- Fix: tambah `REDIS_ADDR: redis:6379` + `REDIS_PASSWORD: ${REDIS_PASSWORD}` ke
+  blok portal-backend di docker-compose.yml → `docker compose config -q` →
+  `up -d --force-recreate portal-backend` (restart biasa TIDAK re-interpolate
+  .env). Commit fix: 943963d (Sprint 1.4a-fix, 17 Sep 2026).
+
+### Cleanup user test: gotcha per service (Sprint 1.4a-fix)
+- Stalwart: id principal TIDAK sama dengan username (id bisa 1 huruf, mis. `t`).
+  Get by name gagal; hapus via CLI pakai id:
+  `delete Account --ids <id>` → output "1 deleted, 0 failed".
+- Stalwart: akun test bisa di-recreate otomatis beberapa detik/menit setelah
+  delete (teramati 3x beruntun). Penyebab pasti belum 100% terkonfirmasi; teori
+  terkuat: sesi webmail/JMAP yang masih live (auto-provision dari claim OIDC).
+  Urutan aman: logout/hapus sesi user → delete akun → soak-test list beberapa
+  menit sampai yakin tidak muncul lagi. Token oauth2 user test di DB Authentik
+  bisa 0 row (bukan selalu sumbernya).
+- Nextcloud: `occ user:delete` (backend user_oidc) TIDAK menghapus row `oc_users`
+  buatan OCS → user masih muncul di `occ user:list` dengan profil kosong
+  (oc_user_oidc & oc_accounts sudah bersih). Bersihkan: hapus row `oc_users`
+  via SQL + datadir di volume (backup tar dulu).
+- Odoo: login SSO auto-create `res_user`+`res_partner` bernama
+  `provider_6_user_<sub>`; menghapus res_user meninggalkan res_partner orphan —
+  hapus keduanya (cek `SELECT id, login FROM res_users` dan partner by name).
