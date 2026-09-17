@@ -755,3 +755,34 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 - Odoo: login SSO auto-create `res_user`+`res_partner` bernama
   `provider_6_user_<sub>`; menghapus res_user meninggalkan res_partner orphan —
   hapus keduanya (cek `SELECT id, login FROM res_users` dan partner by name).
+
+## Portal — De-provisioning gotchas (Sprint 1.4b)
+
+### Stalwart: hapus akun via `x:Account/destroy` = unsupported
+- Gejala: job deprovision gagal permanen (3 attempt) dengan parser error
+  `no x:Account/destroy response` — JMAP (RFC 8620) TIDAK punya method
+  `{Type}/destroy`.
+- Fix: hapus via `x:Account/set` argumen `destroy: [ids]` (RFC 8620 §5.3),
+  setelah resolve id by email via `x:Account/query` + unlink group via
+  `x:Group/set`. Deployed Sprint 1.4b; E2E destroy via kode ini sukses
+  (job success attempts=1, 17 Sep 2026).
+- Verify JMAP dari host: `STALWART_API_URL` (docker-internal) tidak resolve
+  dari host — pakai IP container (`docker inspect cloudsuite-stalwart`).
+  Payload wajib shape `methodCalls` (array-of-arrays), bukan `calls`.
+
+### Redis: payload via `psql -Atc` bisa korup
+- Gejala: `docker exec -i cloudsuite-postgres psql -Atc "SELECT payload..."`
+  menempel tag `INSERT 0 1` di depan JSON saat di-pipe → LPUSH payload rusak.
+- Fix: filter `grep -o '{.*}'` sebelum LPUSH; atau jangan inject sama sekali —
+  job `queued` DB-only otomatis diangkat sweep recovery worker tiap 60 detik
+  (terbukti live menyelamatkan payload korup saat E2E 1.4b).
+
+### Nextcloud: OCS DELETE tidak menghapus row `oc_users`
+- Sama seperti `occ user:delete` (Sprint 1.4a-fix): connector deprovision
+  1.4b jalankan OCS DELETE **plus** SQL hapus `oc_users` + `oc_user_oidc`
+  (kolom `user_id`) langsung ke DB Nextcloud.
+
+### Worker guard: skip provision saat pending_delete/deleted
+- Job `provision` untuk user berstatus `pending_delete`/`deleted` di-skip
+  worker — menutup akar anomali re-create akun test setelah delete
+  (Sprint 1.4a-fix; penyebab struktural diperbaiki di 1.4b).

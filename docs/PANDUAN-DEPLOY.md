@@ -1199,6 +1199,40 @@ docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c   "SELECT * FROM
    `occ user:info <uid>` + baris `oc_user_oidc`, login ERP pertama → akun
    auto-create 1-3 detik.
 
+### De-provisioning (Sprint 1.4b)
+
+Status: LIVE (17 Sep 2026). `DELETE /api/admin/users/{id}` di Portal:
+soft-delete akun + enqueue 3 job `deprovision` (stalwart/nextcloud/odoo),
+status agregat `pending_delete` → `deleted` per service.
+
+- Worker: handle `provision` + `deprovision`; guard anti re-create (job
+  `provision` di-skip bila user berstatus `pending_delete`/`deleted`).
+- Migration `00005_deprovision_status.sql` — enum status +`pending_delete`;
+  jalan otomatis di portal-backend (cek log `to version: 5`).
+- Endpoint tambahan: `POST /api/admin/users/{id}/retry-provision` (re-enqueue
+  job gagal; tombol Retry di `/admin/users`); `GET /api/admin/users` membawa
+  status provisioning (badge Mail/Drive/ERP).
+- Connector destroy: Stalwart via JMAP `x:Account/set {destroy:[ids]}` (method
+  `{Type}/destroy` TIDAK ada di JMAP — RFC 8620 §5.3), Nextcloud OCS DELETE +
+  SQL `oc_users`/`oc_user_oidc`, Odoo SQL relasi→res_user→res_partner. Semua
+  idempotent (sudah tidak ada = success).
+
+### Test E2E de-provisioning
+
+1. Create user test di `/admin/users` (domain terdaftar) → tunggu ±30 detik →
+   badge 3x hijau; cek `user_provisioning` → 3x `active`, external_id terisi.
+2. Delete user via UI (menu ... → Hapus → konfirmasi). Tunggu ±30 detik.
+3. Verifikasi:
+```bash
+docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c "SELECT user_email, stalwart_status, nextcloud_status, odoo_status FROM user_provisioning WHERE user_email LIKE '<email>%';"
+# Expected: deleted/deleted/deleted
+docker logs cloudsuite-portal-worker --since 5m | grep -iE 'deprovision|success'
+# Expected: 3x job success tanpa error
+docker exec cloudsuite-nextcloud su -s /bin/bash www-data -c "php occ user:list" | grep <user>
+# Expected: kosong
+```
+4. Stalwart: akun test hilang dari `x:Account/query` (filter email kosong).
+
 ---
 
 ## Bagian 13 — Backup (Opsional)

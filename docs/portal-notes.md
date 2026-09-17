@@ -128,3 +128,14 @@ Lihat TROUBLESHOOTING.md.
 - Persist: `provisioning_jobs` (per service) + `user_provisioning` (agregat per user: `*_status`, `*_external_id`).
 - Env worker: REDIS_ADDR/REDIS_PASSWORD, AUTHENTIK_API_URL/AUTHENTIK_API_TOKEN/AUTHENTIK_ISSUER/AUTHENTIK_CLIENT_ID, STALWART_API_URL/STALWART_API_KEY, NEXTCLOUD_BASE_URL (WAJIB host canonical `https://drive.idchsuite.my.id` - `http://nextcloud` di-redirect ke HTML), NEXTCLOUD_ADMIN_USER/NEXTCLOUD_ADMIN_PASS, ODOO_BASE_URL/ODOO_DB/ODOO_ADMIN_USER/ODOO_ADMIN_PASSWORD.
 - Worker TIDAK menjalankan migration (hindari race goose dengan backend) - migration jalan di portal-backend saja.
+
+## De-provisioning + UI Status (Sprint 1.4b)
+- Endpoint admin: `DELETE /api/admin/users/{id}` (soft-delete akun Authentik + enqueue 3 job deprovision) dan `POST /api/admin/users/{id}/retry-provision` (re-enqueue job gagal/pending; 202). `GET /api/admin/users` membawa agregat provisioning per user (`provisioning: {stalwart, nextcloud, odoo}`) → badge Mail/Drive/ERP di `/admin/users` (polling 5s saat ada job in-flight).
+- Migration `00005_deprovision_status.sql`: enum status ditambah `pending_delete` (CHECK constraint diperluas); jalan otomatis di portal-backend.
+- Worker `handleDeprovision` dispatch per service; urutan handler: tulis status `pending_delete` + insert jobs DULU → LPUSH Redis belakangan → delete akun Authentik paling akhir (hindari race worker vs UPDATE status).
+- Guard anti re-create: job `provision` untuk user berstatus `pending_delete`/`deleted` di-skip worker (menutup akar anomali re-create 1.4a-fix).
+- Connector Stalwart destroy: JMAP TIDAK punya method `{Type}/destroy` — hapus via `x:Account/set` argumen `destroy:[ids]` (RFC 8620 §5.3), setelah resolve id by email (`x:Account/query`) + unlink dari group (`x:Group/set`).
+- Connector Nextcloud destroy: OCS DELETE + SQL `oc_users` + `oc_user_oidc` (kolom `user_id`) — OCS tidak menghapus row `oc_users`.
+- Connector Odoo destroy: SQL langsung relasi → res_user → res_partner (by login/email), dalam transaksi.
+- Ketiga connector idempotent: objek sudah tidak ada = success — job deprovision fresh aman dipakai menutup status tertinggal (jangan reset attempts job failed).
+- E2E terverifikasi 17 Sep: testcycle14b create → 3x active (external_id terisi) → delete via API → 3x deleted; akun hilang dari `x:Account/query`; job deprovision success attempts=1 via kode baru (bukan workaround CLI).
