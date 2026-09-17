@@ -120,6 +120,7 @@ type JobRow struct {
 	UserID  int
 	Action  string
 	Service string
+	Status  string
 }
 
 // PendingJobs returns queued jobs whose enqueue may have been lost (Redis down

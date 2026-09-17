@@ -95,6 +95,108 @@ func (c *StalwartConnector) Provision(ctx context.Context, p JobPayload) (string
 	return "", fmt.Errorf("stalwart create: unexpected response %s", truncate(args))
 }
 
+// Deprovision destroys the Stalwart account for p.UserEmail (Sprint 1.4b).
+// Idempotent: a missing account is a successful no-op. Accounts that are
+// members of a group must be unlinked first — Stalwart refuses to destroy a
+// linked principal (verified during the 1.4a-fix cleanup).
+func (c *StalwartConnector) Deprovision(ctx context.Context, p JobPayload) error {
+	if p.UserEmail == "" {
+		return fmt.Errorf("stalwart deprovision: missing user_email in job payload")
+	}
+	id, exists, err := c.queryAccount(ctx, p.UserEmail)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+
+	// Unlink group memberships before destroy: memberGroupIds maps group ids
+	// to true, so patching each to false removes the link.
+	groups, err := c.memberGroups(ctx, id)
+	if err != nil {
+		return err
+	}
+	for gid := range groups {
+		if err := c.setAccount(ctx, id, map[string]any{
+			"memberGroupIds": map[string]any{gid: false},
+		}); err != nil {
+			return fmt.Errorf("stalwart unlink group %s: %w", gid, err)
+		}
+	}
+
+	// JMAP has no {Type}/destroy method — deletion goes through
+	// x:Account/set with the destroy argument (RFC 8620 section 5.3).
+	args, err := c.call(ctx, "x:Account/set", map[string]any{
+		"destroy": []string{id},
+	}, []string{"urn:ietf:params:jmap:core", "urn:stalwart:jmap", "urn:ietf:params:jmap:principals"})
+	if err != nil {
+		return fmt.Errorf("stalwart destroy: %w", err)
+	}
+	var res struct {
+		Destroyed    []string `json:"destroyed"`
+		NotDestroyed map[string]struct {
+			Description string `json:"description"`
+		} `json:"notDestroyed"`
+	}
+	if err := json.Unmarshal(args, &res); err != nil {
+		return fmt.Errorf("decode account/set destroy response: %w", err)
+	}
+	for _, v := range res.NotDestroyed {
+		return fmt.Errorf("stalwart destroy rejected: %s", v.Description)
+	}
+	return nil
+}
+
+// memberGroups returns the group ids the account currently belongs to.
+func (c *StalwartConnector) memberGroups(ctx context.Context, id string) (map[string]bool, error) {
+	args, err := c.call(ctx, "x:Account/get", map[string]any{
+		"ids":        []string{id},
+		"properties": []string{"id", "memberGroupIds"},
+	}, []string{"urn:ietf:params:jmap:core", "urn:stalwart:jmap", "urn:ietf:params:jmap:principals"})
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		List []struct {
+			ID             string         `json:"id"`
+			MemberGroupIDs map[string]any `json:"memberGroupIds,omitempty"`
+		} `json:"list"`
+	}
+	if err := json.Unmarshal(args, &out); err != nil {
+		return nil, fmt.Errorf("decode account/get response: %w", err)
+	}
+	groups := map[string]bool{}
+	for _, a := range out.List {
+		for gid := range a.MemberGroupIDs {
+			groups[gid] = true
+		}
+	}
+	return groups, nil
+}
+
+// setAccount patches account fields via x:Account/set update.
+func (c *StalwartConnector) setAccount(ctx context.Context, id string, patch map[string]any) error {
+	args, err := c.call(ctx, "x:Account/set", map[string]any{
+		"update": map[string]any{id: patch},
+	}, []string{"urn:ietf:params:jmap:core", "urn:stalwart:jmap", "urn:ietf:params:jmap:principals"})
+	if err != nil {
+		return err
+	}
+	var res struct {
+		NotUpdated map[string]struct {
+			Description string `json:"description"`
+		} `json:"notUpdated"`
+	}
+	if err := json.Unmarshal(args, &res); err != nil {
+		return fmt.Errorf("decode account/set update response: %w", err)
+	}
+	for _, v := range res.NotUpdated {
+		return fmt.Errorf("stalwart update rejected: %s", v.Description)
+	}
+	return nil
+}
+
 // queryAccount lists accounts and matches by emailAddress. Stalwart does not
 // support a server-side email filter on x:Account/query (verified live:
 // unsupportedFilter), so matching happens client-side.

@@ -89,12 +89,20 @@ func (w *Worker) Run(ctx context.Context) {
 // process executes one job: resolve identity, run the connector, record the
 // outcome. Failed jobs are retried with exponential backoff (max_attempts).
 func (w *Worker) process(ctx context.Context, p *JobPayload) {
-	if p.Action != ActionProvision {
-		msg := "action " + p.Action + " not supported in Sprint 1.4a"
+	switch p.Action {
+	case ActionProvision:
+		w.processProvision(ctx, p)
+	case ActionDeprovision:
+		w.processDeprovision(ctx, p)
+	default:
+		msg := "action " + p.Action + " not supported"
 		_ = w.store.MarkJob(ctx, p.JobID, StatusFailed, 0, nil, &msg)
 		log.Warn().Str("job", p.JobID).Msg(msg)
-		return
 	}
+}
+
+// processProvision handles job action 'provision'.
+func (w *Worker) processProvision(ctx context.Context, p *JobPayload) {
 	conn, ok := w.connectors[p.Service]
 	if !ok {
 		msg := "no connector registered for service"
@@ -121,6 +129,19 @@ func (w *Worker) process(ctx context.Context, p *JobPayload) {
 		}
 		if p.Name == "" {
 			p.Name = u.Name
+		}
+	}
+
+	// Deprovision guard: once the de-provision pipeline has claimed a user
+	// (pending_delete/deleted), provision jobs must not run — a stale job
+	// arriving after the delete would re-create orphan resources again
+	// (lesson from the 1.4a-fix cleanup).
+	if st, serr := w.store.ServiceStatus(ctx, p.UserID, p.Service); serr == nil {
+		if DeprovisioningStates()[st] {
+			msg := "skipped: " + p.Service + " status is " + st + " (deprovisioning)"
+			_ = w.store.MarkJob(ctx, p.JobID, StatusFailed, 0, nil, &msg)
+			log.Warn().Str("job", p.JobID).Str("service", p.Service).Msg(msg)
+			return
 		}
 	}
 
@@ -157,6 +178,68 @@ func (w *Worker) process(ctx context.Context, p *JobPayload) {
 	_ = w.store.SetServiceStatus(ctx, p.UserID, p.Service, ProvActive, "")
 	_ = w.store.MarkJob(ctx, p.JobID, StatusSuccess, attempts, nil, nil)
 	lg.Info().Str("external_id", extID).Msg("provisioning: job succeeded")
+}
+
+// processDeprovision handles job action 'deprovision' (Sprint 1.4b). The
+// Authentik user is usually already deleted when this runs, so identity comes
+// from the portal user_provisioning row (email + Nextcloud uid), not from the
+// Authentik API.
+func (w *Worker) processDeprovision(ctx context.Context, p *JobPayload) {
+	conn, ok := w.connectors[p.Service]
+	if !ok {
+		msg := "no connector registered for service"
+		_ = w.store.MarkJob(ctx, p.JobID, StatusFailed, 0, nil, &msg)
+		log.Error().Str("job", p.JobID).Str("service", p.Service).Msg(msg)
+		return
+	}
+
+	if p.UserEmail == "" || p.UID == "" {
+		email, ncUID, err := w.store.UserIdentity(ctx, p.UserID)
+		if err != nil {
+			msg := "deprovision: identity unavailable (no user_provisioning row)"
+			_ = w.store.MarkJob(ctx, p.JobID, StatusFailed, 0, nil, &msg)
+			log.Error().Str("job", p.JobID).Int("user_id", p.UserID).Msg(msg)
+			return
+		}
+		if p.UserEmail == "" {
+			p.UserEmail = email
+		}
+		if p.UID == "" {
+			p.UID = ncUID
+		}
+	}
+
+	lg := log.With().Str("job", p.JobID).Str("service", p.Service).
+		Str("email", p.UserEmail).Int("user_id", p.UserID).Logger()
+
+	attempts, maxAttempts, err := w.store.GetJob(ctx, p.JobID)
+	if err != nil {
+		lg.Error().Err(err).Msg("deprovisioning: load job failed")
+		return
+	}
+	attempts++
+
+	_ = w.store.MarkJob(ctx, p.JobID, StatusRunning, attempts, nil, nil)
+
+	if derr := conn.Deprovision(ctx, *p); derr != nil {
+		// Keep pending_delete (the deprovision claim set at delete time) and
+		// surface the error: marking the service 'failed' here would drop the
+		// claim and re-open the provision pipeline for a deleted user.
+		_ = w.store.SetServiceStatus(ctx, p.UserID, p.Service, ProvPendingDelete, derr.Error())
+		if attempts >= maxAttempts {
+			_ = w.store.MarkJob(ctx, p.JobID, StatusFailed, attempts, nil, strPtr(derr.Error()))
+			lg.Error().Err(derr).Int("attempts", attempts).Msg("deprovisioning: job failed permanently")
+			return
+		}
+		next := time.Now().Add(backoff(attempts))
+		_ = w.store.MarkJob(ctx, p.JobID, StatusFailed, attempts, &next, strPtr(derr.Error()))
+		lg.Warn().Err(derr).Int("attempts", attempts).Time("retry_at", next).Msg("deprovisioning: job failed, will retry")
+		return
+	}
+
+	_ = w.store.SetServiceStatus(ctx, p.UserID, p.Service, ProvDeleted, "")
+	_ = w.store.MarkJob(ctx, p.JobID, StatusSuccess, attempts, nil, nil)
+	lg.Info().Msg("deprovisioning: job succeeded")
 }
 
 // sweepOnce re-enqueues: queued jobs stale for > staleAfter (lost enqueue)

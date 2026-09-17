@@ -16,6 +16,10 @@ type Connector interface {
 	// Provision creates (or verifies) the service account and returns the
 	// external id to persist in user_provisioning.<service>_external_id.
 	Provision(ctx context.Context, p JobPayload) (externalID string, err error)
+	// Deprovision removes the service account (Sprint 1.4b). It must be
+	// idempotent: a missing account is a successful no-op — the user may
+	// never have been provisioned, or was already removed.
+	Deprovision(ctx context.Context, p JobPayload) error
 }
 
 // passwordAlphabet excludes visually ambiguous characters; the generated

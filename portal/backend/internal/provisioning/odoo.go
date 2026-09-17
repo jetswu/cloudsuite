@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // OdooConnector verifies the Odoo provisioning path. Per the approved 1.4a
@@ -23,16 +25,20 @@ type OdooConnector struct {
 	db      string
 	login   string
 	pass    string
+	odb     *pgxpool.Pool // odoo DB on the shared postgres instance (deprovision)
 	http    *http.Client
 }
 
 // NewOdooConnector returns a connector for the Odoo JSON-RPC endpoint.
-func NewOdooConnector(baseURL, db, login, pass string) *OdooConnector {
+// odb may be nil only when de-provisioning is not wired (Sprint 1.4b: SQL
+// cleanup runs on the Odoo database, mirroring the verified 1.4a-fix cleanup).
+func NewOdooConnector(baseURL, db, login, pass string, odb *pgxpool.Pool) *OdooConnector {
 	return &OdooConnector{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		db:      db,
 		login:   login,
 		pass:    pass,
+		odb:     odb,
 		http:    &http.Client{Timeout: 20 * time.Second},
 	}
 }
@@ -63,6 +69,79 @@ func (c *OdooConnector) Provision(ctx context.Context, p JobPayload) (string, er
 		return fmt.Sprintf("user-%d", ids[0]), nil
 	}
 	return "deferred-first-login", nil
+}
+
+// Deprovision removes the Odoo user created by the OIDC auto-create
+// (Sprint 1.4b). The account is found by login (email); removal follows the
+// dependency order verified in the 1.4a-fix cleanup: group memberships and
+// ir_model_data references first, then res_users + res_partner. Idempotent:
+// an absent login is a successful no-op. With odb == nil the job still
+// succeeds when the user does not exist, and fails when SQL is required but
+// unavailable (fail loud, never leave a half-deleted ERP account).
+func (c *OdooConnector) Deprovision(ctx context.Context, p JobPayload) error {
+	if p.UserEmail == "" {
+		return fmt.Errorf("odoo deprovision: missing user_email in job payload")
+	}
+	uid, err := c.authenticate(ctx)
+	if err != nil {
+		return err
+	}
+	if uid == 0 {
+		return fmt.Errorf("odoo authenticate rejected (uid=0)")
+	}
+
+	ids, err := c.search(ctx, uid, p.UserEmail)
+	if err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil // never provisioned / already gone — idempotent success
+	}
+
+	if c.odb == nil {
+		return fmt.Errorf("odoo deprovision: odoo db pool not configured")
+	}
+	if err := c.deleteUserSQL(ctx, ids[0]); err != nil {
+		return err
+	}
+	return nil
+}
+
+// deleteUserSQL removes one res.users row plus its dependencies in the order
+// that satisfies Odoo's foreign keys. res_partner deletion happens after the
+// user row that referenced it.
+func (c *OdooConnector) deleteUserSQL(ctx context.Context, userID int) error {
+	tx, err := c.odb.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("odoo deprovision begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	partnerID := 0
+	err = tx.QueryRow(ctx, `SELECT partner_id FROM res_users WHERE id = $1`, userID).Scan(&partnerID)
+	if err != nil {
+		return fmt.Errorf("odoo deprovision: load user %d: %w", userID, err)
+	}
+
+	stmts := []struct {
+		q    string
+		args []any
+	}{
+		{`DELETE FROM res_groups_users_rel WHERE uid = $1`, []any{userID}},
+		{`DELETE FROM ir_model_data WHERE model = 'res.users' AND res_id = $1`, []any{userID}},
+		{`DELETE FROM ir_model_data WHERE model = 'res.partner' AND res_id = $1`, []any{partnerID}},
+		{`DELETE FROM res_users WHERE id = $1`, []any{userID}},
+		{`DELETE FROM res_partner WHERE id = $1`, []any{partnerID}},
+	}
+	for _, s := range stmts {
+		if _, err := tx.Exec(ctx, s.q, s.args...); err != nil {
+			return fmt.Errorf("odoo deprovision: %s: %w", s.q, err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("odoo deprovision commit: %w", err)
+	}
+	return nil
 }
 
 // rpcError is the JSON-RPC error member of an Odoo response.

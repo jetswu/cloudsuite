@@ -111,6 +111,45 @@ func (c *NextcloudConnector) seedOIDCMapping(ctx context.Context, p JobPayload) 
 	return nil
 }
 
+// Deprovision removes the Nextcloud user (Sprint 1.4b). Idempotent: a
+// missing user is a successful no-op. The OCS delete does not remove the
+// oc_users row of an OCS-created user, so both tables are cleaned via SQL on
+// the Nextcloud database (gotcha documented in the 1.4a-fix cleanup).
+func (c *NextcloudConnector) Deprovision(ctx context.Context, p JobPayload) error {
+	if p.UID == "" {
+		return fmt.Errorf("nextcloud deprovision: missing uid in job payload")
+	}
+	exists, err := c.userExists(ctx, p.UID)
+	if err != nil {
+		return err
+	}
+	if exists {
+		body, err := c.ocs(ctx, http.MethodDelete, "/cloud/users/"+url.PathEscape(p.UID), nil)
+		if err != nil {
+			return err
+		}
+		switch ocsCode(body) {
+		case "100":
+			// deleted
+		case "404":
+			// gone already (raced with another delete) — idempotent
+		default:
+			return fmt.Errorf("nextcloud delete: %s", ocsMessage(body))
+		}
+	}
+	if c.ncdb != nil {
+		for _, q := range []string{
+			`DELETE FROM oc_user_oidc WHERE user_id = $1`,
+			`DELETE FROM oc_users WHERE uid = $1`,
+		} {
+			if _, err := c.ncdb.Exec(ctx, q, p.UID); err != nil {
+				return fmt.Errorf("nextcloud: sql cleanup %s: %w", q, err)
+			}
+		}
+	}
+	return nil
+}
+
 // ocs performs an OCS API request and returns the raw XML body.
 func (c *NextcloudConnector) ocs(ctx context.Context, method, path string, form url.Values) ([]byte, error) {
 	var bodyReader io.Reader

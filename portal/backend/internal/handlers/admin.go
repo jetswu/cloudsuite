@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/jetswu/cloudsuite/portal/backend/internal/auth"
@@ -21,6 +22,14 @@ import (
 // matches the frontend validation and exists to catch empty or malformed
 // addresses before they reach Authentik and break SSO login later.
 var emailRe = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+
+// AdminUserWithProvisioning wraps a user with its Sprint 1.4b provisioning
+// read model (nil when the user was never provisioned, e.g. pre-1.4a users).
+// Defined in handlers to avoid a domain -> provisioning import cycle.
+type AdminUserWithProvisioning struct {
+	domain.User
+	Provisioning *provisioning.ProvisioningState `json:"provisioning,omitempty"`
+}
 
 func validEmail(v string) bool {
 	return emailRe.MatchString(strings.TrimSpace(v))
@@ -69,6 +78,8 @@ func (a *AdminHandler) Routes(r chi.Router, requireAuth func(http.Handler) http.
 		admin.Put("/users/{id}", a.updateUser)
 		admin.Delete("/users/{id}", a.deleteUser)
 		admin.Put("/users/{id}/groups", a.setUserGroups)
+		admin.Post("/users/{id}/retry-provision", a.retryProvision)
+		admin.Get("/users/{id}/provisioning", a.userProvisioning)
 
 		admin.Get("/groups", a.listGroups)
 		admin.Post("/groups", a.createGroup)
@@ -91,7 +102,26 @@ func (a *AdminHandler) listUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "list users", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, users)
+
+	// Sprint 1.4b: merge per-user provisioning states into the list payload.
+	// Users without a provisioning row keep provisioning == nil (pre-1.4a).
+	states := map[int]provisioning.ProvisioningState{}
+	if a.prov != nil {
+		if s, err := a.prov.ProvisioningStates(r.Context()); err == nil {
+			states = s
+		} else {
+			log.Error().Err(err).Msg("read provisioning states for users list")
+		}
+	}
+	out := make([]AdminUserWithProvisioning, 0, len(users))
+	for _, u := range users {
+		item := AdminUserWithProvisioning{User: u}
+		if st, ok := states[u.PK]; ok {
+			item.Provisioning = &st
+		}
+		out = append(out, item)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (a *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
@@ -199,11 +229,158 @@ func (a *AdminHandler) deleteUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
 		return
 	}
+
+	// Sprint 1.4b: enqueue the three deprovision jobs BEFORE the Authentik
+	// delete. The jobs carry the email; the worker pulls uid + service state
+	// from user_provisioning. Enqueue failure must not block the delete —
+	// the state rows persist and the retry endpoint can re-enqueue.
+	deprovisionQueued := false
+	if a.prov != nil {
+		// Read the provisioning state first: it survives the Authentik delete
+		// and feeds both the jobs and the status flip below.
+		email, err := a.prov.UserEmail(r.Context(), id)
+		if err == nil && email != "" {
+			if _, err := a.prov.DeprovisionUser(r.Context(), id, email); err != nil {
+				log.Error().Err(err).Int("user_id", id).Msg("deprovision enqueue failed (deleting user; retry endpoint can re-enqueue)")
+			} else {
+				deprovisionQueued = true
+			}
+			// Claim the user for deprovisioning: pending_delete stops any
+			// still-queued provision job from re-creating resources.
+			if err := a.prov.MarkPendingDelete(r.Context(), id, email); err != nil {
+				log.Error().Err(err).Int("user_id", id).Msg("mark pending_delete failed")
+			}
+		} else {
+			// Pre-1.4a user (no provisioning row): nothing to deprovision by
+			// email. Doc 1.4b 1.2 says enqueue anyway — but without any email
+			// the connectors cannot address the account, so the jobs would be
+			// dead letters. Keep it visible instead of silent.
+			log.Info().Int("user_id", id).Msg("no user_provisioning row; skipping deprovision enqueue")
+		}
+	}
+
 	if err := a.repo.DeleteUser(r.Context(), id); err != nil {
 		writeError(w, http.StatusBadGateway, "delete user", err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, map[string]bool{
+		"deleted":            true,
+		"deprovision_queued": deprovisionQueued,
+	})
+}
+
+// retryProvision re-enqueues failed provisioning jobs (Sprint 1.4b 1.3):
+// POST /api/admin/users/{id}/retry-provision {service: stalwart|nextcloud|odoo|all}
+func (a *AdminHandler) retryProvision(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
+		return
+	}
+	var req struct {
+		Service string `json:"service"`
+	}
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	svc := strings.TrimSpace(req.Service)
+	switch svc {
+	case "stalwart", "nextcloud", "odoo", "all":
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "service must be stalwart|nextcloud|odoo|all"})
+		return
+	}
+
+	// The user may already be gone from Authentik (deleted user retry) —
+	// identity then comes from the user_provisioning row.
+	email, err := a.prov.UserEmail(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no provisioning state for this user"})
+			return
+		}
+		writeError(w, http.StatusBadGateway, "retry-provision: read state", err)
+		return
+	}
+
+	// Deprovisioning users may not be re-provisioned (guard in the worker as
+	// well — this check keeps the API answer honest instead of silently
+	// enqueueing jobs that will be skipped).
+	states, err := a.prov.ServiceStates(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "retry-provision: read statuses", err)
+		return
+	}
+	for _, s := range states {
+		if provisioning.DeprovisioningStates()[s] {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "user is being deprovisioned; provision retry is not allowed"})
+			return
+		}
+	}
+
+	jobs, err := a.prov.LatestJobs(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "retry-provision: read jobs", err)
+		return
+	}
+	latest := map[string]provisioning.JobRow{}
+	for _, j := range jobs {
+		latest[j.Service] = j
+	}
+
+	targets := provisioning.Services
+	if svc != "all" {
+		targets = []string{svc}
+	}
+
+	var queued []string
+	for _, t := range targets {
+		j, ok := latest[t]
+		if ok && (j.Status == provisioning.StatusQueued || j.Status == provisioning.StatusRunning) {
+			continue // already in flight — retry would duplicate work
+		}
+		// Enqueue a fresh job for the service (both provision and deprovision
+		// retries re-run the latest action; a missing job defaults to
+		// provision for live users).
+		action := provisioning.ActionProvision
+		if ok && j.Action == provisioning.ActionDeprovision {
+			action = provisioning.ActionDeprovision
+		}
+		jobIDs, err := a.prov.RetryService(r.Context(), id, email, action, t)
+		if err != nil {
+			log.Error().Err(err).Int("user_id", id).Str("service", t).Msg("retry-provision enqueue failed")
+			continue
+		}
+		queued = append(queued, jobIDs...)
+	}
+	if len(queued) == 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "nothing to retry (jobs already queued/running or no failed job)"})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"queued":  queued,
+		"service": svc,
+	})
+}
+
+// userProvisioning returns the per-service provisioning state for the user
+// detail view: GET /api/admin/users/{id}/provisioning
+func (a *AdminHandler) userProvisioning(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user id"})
+		return
+	}
+	state, err := a.prov.ProvisioningState(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no provisioning state for this user"})
+			return
+		}
+		writeError(w, http.StatusBadGateway, "read provisioning state", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
 }
 
 func (a *AdminHandler) setUserGroups(w http.ResponseWriter, r *http.Request) {
