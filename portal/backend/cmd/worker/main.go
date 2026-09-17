@@ -68,12 +68,37 @@ func main() {
 	}
 	defer ncdb.Close()
 
+	// Odoo DB (Sprint 1.4b deprovision SQL cleanup) on the same instance.
+	// Fatal here would block all provisioning on an odoo-db hiccup, so a
+	// failed connect is logged and the Odoo deprovision path fails loud later
+	// if it is actually needed.
+	odb, err := database.Connect(ctx, database.Config{
+		Host:     cfg.PortalDBHost,
+		Port:     cfg.PortalDBPort,
+		Name:     cfg.OdooDB,
+		User:     cfg.PortalDBUser,
+		Password: cfg.PortalDBPassword,
+	})
+	odooDeprovisionReady := err == nil
+	if err != nil {
+		log.Error().Err(err).Msg("connect odoo db (odoo deprovision disabled until restart)")
+	}
+	if odooDeprovisionReady {
+		defer odb.Close()
+	}
+
 	authClient := authentik.NewClient(cfg.AuthentikAPIURL, cfg.AuthentikAPIToken)
 
 	connectors := []provisioning.Connector{
 		provisioning.NewStalwartConnector(cfg.StalwartAPIURL, cfg.StalwartAPIKey),
 		provisioning.NewNextcloudConnector(cfg.NCBaseURL, cfg.NCAdminUser, cfg.NCAdminPass, ncdb),
-		provisioning.NewOdooConnector(cfg.OdooBaseURL, cfg.OdooDB, cfg.OdooLogin, cfg.OdooPassword),
+	}
+	if odooDeprovisionReady {
+		connectors = append(connectors, provisioning.NewOdooConnector(cfg.OdooBaseURL, cfg.OdooDB, cfg.OdooLogin, cfg.OdooPassword, odb))
+	} else {
+		// Register a pool-less Odoo connector: provisioning (verify-only)
+		// keeps working; deprovision fails loud with a clear message.
+		connectors = append(connectors, provisioning.NewOdooConnector(cfg.OdooBaseURL, cfg.OdooDB, cfg.OdooLogin, cfg.OdooPassword, nil))
 	}
 
 	worker := provisioning.NewWorker(
