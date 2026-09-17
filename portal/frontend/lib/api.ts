@@ -19,6 +19,33 @@ export type AdminUser = {
   roles: string[]
 }
 
+// Sprint 1.4b: per-service provisioning state (user_provisioning row).
+export type ProvisioningStatus =
+  | "pending"
+  | "provisioning"
+  | "active"
+  | "failed"
+  | "deleted"
+  | "pending_delete"
+
+export type ProvisioningState = {
+  user_id: number
+  email: string
+  stalwart: ProvisioningStatus
+  nextcloud: ProvisioningStatus
+  odoo: ProvisioningStatus
+  last_error?: string
+}
+
+export type AdminUserWithProvisioning = AdminUser & {
+  provisioning?: ProvisioningState | null
+}
+
+export type RetryProvisionResponse = {
+  queued: string[]
+  service: string
+}
+
 export type AdminGroup = {
   pk: string
   name: string
@@ -166,7 +193,20 @@ export const adminApi = {
     }),
 
   deleteUser: (token: string, id: number) =>
-    request<void>(`/users/${id}`, token, { method: "DELETE" }),
+    request<{ deleted: boolean; deprovision_queued: boolean }>(
+      `/users/${id}`,
+      token,
+      { method: "DELETE" },
+    ),
+
+  retryProvisioning: (token: string, id: number, service: string) =>
+    request<RetryProvisionResponse>(`/users/${id}/retry-provision`, token, {
+      method: "POST",
+      body: JSON.stringify({ service }),
+    }),
+
+  getProvisioning: (token: string, id: number) =>
+    request<ProvisioningState>(`/users/${id}/provisioning`, token),
 
   setUserGroups: (token: string, id: number, groupUUIDs: string[]) =>
     request<void>(`/users/${id}/groups`, token, {

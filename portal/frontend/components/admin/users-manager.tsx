@@ -1,7 +1,15 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Ban, Check, MoreHorizontal, Pencil, Plus, Search } from "lucide-react"
+import { useMemo, useState, useEffect } from "react"
+import {
+  Ban,
+  Check,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Search,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -17,9 +25,35 @@ import { UserFormDialog } from "@/components/admin/user-form-dialog"
 import { UserCreatedDialog } from "@/components/admin/user-created-dialog"
 import { useAdminResource } from "@/hooks/use-admin-resource"
 import { useGroups } from "@/hooks/use-groups"
-import { adminApi, type AdminUser } from "@/lib/api"
+import { adminApi, type AdminUserWithProvisioning } from "@/lib/api"
 
 type StatusFilter = "all" | "active" | "suspended"
+
+// Sprint 1.4b: provisioning badge rendering per service status.
+const PROV_BADGE: Record<string, { label: string; cls: string }> = {
+  active: { label: "✅", cls: "bg-emerald-500/15 text-emerald-600" },
+  provisioning: { label: "⏳", cls: "bg-amber-500/15 text-amber-600" },
+  pending: { label: "⏳", cls: "bg-amber-500/15 text-amber-600" },
+  failed: { label: "⚠️", cls: "bg-destructive/15 text-destructive" },
+  pending_delete: { label: "⛔", cls: "bg-orange-500/15 text-orange-600" },
+  deleted: { label: "⛔", cls: "bg-muted text-muted-foreground" },
+}
+
+function ProvBadge({ service, status }: { service: string; status: string }) {
+  const b = PROV_BADGE[status] ?? {
+    label: "·",
+    cls: "bg-muted text-muted-foreground",
+  }
+  return (
+    <span
+      title={`${service}: ${status}`}
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${b.cls}`}
+    >
+      <span aria-hidden>{b.label}</span>
+      <span className="uppercase">{service.slice(0, 4)}</span>
+    </span>
+  )
+}
 
 function formatDateTime(value: string | null): string {
   if (!value) return "—"
@@ -35,21 +69,38 @@ function formatDateTime(value: string | null): string {
 }
 
 export function UsersManager({ accessToken }: { accessToken?: string }) {
-  const { data, setData, loading, error, refresh } = useAdminResource<AdminUser>(
-    accessToken,
-    adminApi.listUsers,
-  )
+  const { data, setData, loading, error, refresh } =
+    useAdminResource<AdminUserWithProvisioning>(accessToken, adminApi.listUsers)
   const groups = useGroups(accessToken)
 
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState<StatusFilter>("all")
   const [formOpen, setFormOpen] = useState(false)
-  const [editing, setEditing] = useState<AdminUser | null>(null)
-  const [deleting, setDeleting] = useState<AdminUser | null>(null)
+  const [editing, setEditing] = useState<AdminUserWithProvisioning | null>(null)
+  const [deleting, setDeleting] = useState<AdminUserWithProvisioning | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [createdUser, setCreatedUser] = useState<AdminUser | null>(null)
+  const [createdUser, setCreatedUser] = useState<AdminUserWithProvisioning | null>(null)
   const [createdPassword, setCreatedPassword] = useState<string | null>(null)
+
+  // Sprint 1.4b: poll every 5s while any visible user has jobs in flight so
+  // provisioning badges resolve without a manual refresh. Stops when idle.
+  const hasPending = useMemo(
+    () =>
+      data.some((u) =>
+        ["pending", "provisioning", "pending_delete"].some((s) =>
+          [u.provisioning?.stalwart, u.provisioning?.nextcloud, u.provisioning?.odoo].includes(
+            s as never,
+          ),
+        ),
+      ),
+    [data],
+  )
+  useEffect(() => {
+    if (!hasPending) return
+    const t = setInterval(refresh, 5000)
+    return () => clearInterval(t)
+  }, [hasPending, refresh])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -70,12 +121,12 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
     setFormOpen(true)
   }
 
-  function openEdit(u: AdminUser) {
+  function openEdit(u: AdminUserWithProvisioning) {
     setEditing(u)
     setFormOpen(true)
   }
 
-  function handleSaved(user: AdminUser, password?: string) {
+  function handleSaved(user: AdminUserWithProvisioning, password?: string) {
     setData((prev) => {
       const exists = prev.some((u) => u.pk === user.pk)
       return exists
@@ -93,7 +144,7 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
     setCreatedPassword(null)
   }
 
-  async function toggleActive(u: AdminUser) {
+  async function toggleActive(u: AdminUserWithProvisioning) {
     if (!accessToken) return
     setBusy(true)
     setActionError(null)
@@ -119,9 +170,14 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
     setBusy(true)
     setActionError(null)
     try {
-      await adminApi.deleteUser(accessToken, deleting.pk)
-      setData((prev) => prev.filter((u) => u.pk !== deleting.pk))
+      const res = await adminApi.deleteUser(accessToken, deleting.pk)
+      if (!res.deprovision_queued) {
+        setActionError(
+          "User terhapus, tapi de-provisioning tidak ter-enqueue (tidak ada state provisioning).",
+        )
+      }
       setDeleting(null)
+      await refresh()
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : "Gagal menghapus user.",
@@ -129,6 +185,28 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  // Sprint 1.4b: retry the latest failed provisioning job per service.
+  async function retryProvisioning(u: AdminUserWithProvisioning, service: string) {
+    if (!accessToken) return
+    setBusy(true)
+    setActionError(null)
+    try {
+      await adminApi.retryProvisioning(accessToken, u.pk, service)
+      await refresh()
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Gagal retry provisioning.",
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function hasFailedJob(u: AdminUserWithProvisioning): boolean {
+    const p = u.provisioning
+    return [p?.stalwart, p?.nextcloud, p?.odoo].includes("failed")
   }
 
   return (
@@ -208,6 +286,7 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
                   <th className="px-6 py-3 font-medium">Group</th>
                   <th className="px-6 py-3 font-medium">Last Login</th>
                   <th className="px-6 py-3 font-medium">Status</th>
+                  <th className="px-6 py-3 font-medium">Provisioning</th>
                   <th className="px-6 py-3 text-right font-medium">Aksi</th>
                 </tr>
               </thead>
@@ -215,7 +294,7 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-6 py-8 text-center text-muted-foreground"
                     >
                       Tidak ada user.
@@ -263,6 +342,17 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
                           </span>
                         )}
                       </td>
+                      <td className="px-6 py-3">
+                        {u.provisioning ? (
+                          <div className="flex flex-wrap gap-1">
+                            <ProvBadge service="mail" status={u.provisioning.stalwart} />
+                            <ProvBadge service="drive" status={u.provisioning.nextcloud} />
+                            <ProvBadge service="erp" status={u.provisioning.odoo} />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="px-6 py-3 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -298,6 +388,15 @@ export function UsersManager({ accessToken }: { accessToken?: string }) {
                                 </>
                               )}
                             </DropdownMenuItem>
+                            {hasFailedJob(u) ? (
+                              <DropdownMenuItem
+                                onClick={() => retryProvisioning(u, "all")}
+                                disabled={busy}
+                              >
+                                <RotateCcw className="size-4" />
+                                Retry provisioning
+                              </DropdownMenuItem>
+                            ) : null}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               variant="destructive"
