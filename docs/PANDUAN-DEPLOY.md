@@ -1235,6 +1235,46 @@ docker exec cloudsuite-nextcloud su -s /bin/bash www-data -c "php occ user:list"
 
 ---
 
+## Bagian 12g — Audit Log + Widget Stats (Sprint 1.5a)
+
+### Audit Log
+- Tabel `audit_logs` (migration 00006, goose otomatis jalan saat portal-backend start).
+  Append-only: trigger PL/pgSQL menolak UPDATE/DELETE. Kolom: id, actor_user_id,
+  actor_email, actor_ip, action, service_code, target_type, target_id, target_label,
+  metadata (JSONB), created_at.
+- API (superadmin only, `RequireAuth` + `RequireSuperAdmin`):
+  `GET /api/admin/audit?action=&service=&actor=&from=&to=&search=&limit=&offset=`
+  (default limit 50, max 200) dan `GET /api/admin/audit/export` (CSV, cap 10.000 baris).
+- UI: `/admin/audit` — tabel, filter (tanggal, actor, action, service, search debounce
+  400ms), pagination, Export CSV, modal detail metadata JSON.
+
+### Widget Stats (dashboard)
+- 3 endpoint per-user (JWT required): `GET /api/widgets/{mail,drive,erp}/summary`.
+- Env `portal-backend` (compose): `NEXTCLOUD_API_URL` (canonical public host),
+  `NEXTCLOUD_ADMIN_USER/PASSWORD`, `ODOO_API_URL`, `ODOO_DB_NAME`,
+  `ODOO_ADMIN_USER/PASSWORD`. Stalwart via `STALWART_API_URL` + `STALWART_API_KEY`.
+- Cache Redis: `widget:mail:<email>` TTL 5m, `widget:drive:<uid>` TTL 5m,
+  `widget:erp:global` TTL 15m.
+- Widget ERP metrik ADAPTIF — deployment Odoo ini hanya base+mail (tabel
+  invoice/stock/tasks tidak ada), metrik yang dipakai: Kontak (res_partner),
+  Aktivitas pesan 30 hari (mail_message), User aktif (res_users).
+- Stalwart JMAP tidak support `sort` → fetch window 20 lalu sort client-side.
+- Error per-widget tidak mematikan halaman: endpoint balas 200
+  `{unavailable: true, error: "..."}` → UI menampilkan state "Data tidak tersedia".
+- Verifikasi cepat:
+```bash
+# migration sudah jalan?
+docker logs cloudsuite-portal-backend | grep -i goose | tail -1
+# Expected: goose: successfully migrated database to version: 6
+docker exec cloudsuite-postgres psql -U cloudsuite -d portal -c "\dt" | grep audit_logs
+
+# env widget terpasang?
+docker exec cloudsuite-portal-backend printenv | grep -cE 'NEXTCLOUD|ODOO'
+# Expected: >= 6
+```
+
+---
+
 ## Bagian 13 — Backup (Opsional)
 
 Status: [TBC] — prosedur backup lengkap belum ada (TODO staging).

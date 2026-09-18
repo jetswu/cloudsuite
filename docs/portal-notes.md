@@ -139,3 +139,19 @@ Lihat TROUBLESHOOTING.md.
 - Connector Odoo destroy: SQL langsung relasi → res_user → res_partner (by login/email), dalam transaksi.
 - Ketiga connector idempotent: objek sudah tidak ada = success — job deprovision fresh aman dipakai menutup status tertinggal (jangan reset attempts job failed).
 - E2E terverifikasi 17 Sep: testcycle14b create → 3x active (external_id terisi) → delete via API → 3x deleted; akun hilang dari `x:Account/query`; job deprovision success attempts=1 via kode baru (bukan workaround CLI).
+
+## Audit Log (Sprint 1.5a)
+- Tabel `audit_logs` (migration 00006): append-only via trigger PL/pgSQL (UPDATE/DELETE → exception). Migration dibungkus `-- +goose StatementBegin/End` (goose split per `;` memecah body function — lihat TROUBLESHOOTING).
+- `AuditLogger` (internal/service/audit.go): non-blocking (insert async `context.WithoutCancel`, nil-safe = no-op, error audit tidak pernah memutus request).
+- Handler ter-instrument (11 aksi): user.create/update/delete/set_groups, group.create/update/delete, domain.create/delete/verify/update_dkim, provisioning.retry. `service_code` domain = `mail` (konsistensi filter).
+- API (superadmin): `GET /api/admin/audit` (filter actor/action/service/from/to/search + limit max 200 + offset) dan `GET /api/admin/audit/export` (CSV, cap 10k).
+- UI `/admin/audit`: tabel + filter + pagination + Export CSV + modal detail metadata JSON; menu sidebar "Audit Log".
+
+## Widget Stats (Sprint 1.5a)
+- Endpoint (JWT): `GET /api/widgets/{mail,drive,erp}/summary` (internal/widget + widgetcache Redis).
+- Cache: mail 5m (key per email), drive 5m (key per uid), erp 15m (global).
+- Mail: JMAP admin API key — resolve accountId per email (`x:Account/query`, id opaque) → satu request batch: `Email/query` filter `$unread` + `calculateTotal` (unread count) + `Email/query` limit 20 + `Email/get` (`#ids` ref ke query) untuk 5 pesan terbaru. Sort `receivedAt` TIDAK didukung Stalwart → fetch + sort client-side.
+- Drive: OCS quota user (admin) + `oc_filecache` DB Nextcloud untuk 5 file terakhir (JOIN mount).
+- ERP (metrik ADAPTIF — deployment hanya base+mail): Kontak (res_partner), Aktivitas pesan 30h (mail_message), User aktif (res_users) via JSON-RPC `search_count`. Invoice/stock/tasks tidak memungkinkan sampai modul di-install.
+- Identitas dari JWT SAJA (tanpa Authentik API): mail=email claim; drive=`sub` (uid hex) = userid Nextcloud (mapping `oc_user_oidc` sub=uid, Sprint 1.4a).
+- Soft-degrade: kegagalan per-widget → 200 `{unavailable:true,error}`; UI tampilkan "Data tidak tersedia" + tombol retry; dashboard tetap utuh.

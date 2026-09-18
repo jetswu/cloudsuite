@@ -786,3 +786,41 @@ Copy **exact value** termasuk trailing slash ke Stalwart `issuerUrl`.
 - Job `provision` untuk user berstatus `pending_delete`/`deleted` di-skip
   worker — menutup akar anomali re-create akun test setelah delete
   (Sprint 1.4a-fix; penyebab struktural diperbaiki di 1.4b).
+
+### Goose: PL/pgSQL function wajib StatementBegin/StatementEnd (Sprint 1.5a)
+- Gejala: migration 00006 gagal — `unterminated dollar-quoted string` +
+  `query parameter ... expected 0 arguments` → portal-backend crash loop.
+- Sebab: goose memecah SQL per `;` — body function PL/pgSQL mengandung `;`
+  di dalam `$$...$$`, jadi terpotong jadi beberapa statement rusak.
+- Fix: bungkus CREATE FUNCTION + CREATE TRIGGER dengan
+  `-- +goose StatementBegin` / `-- +goose StatementEnd`.
+- Rollback otomatis: transaksi migration rollback bersih, DB tetap versi 5,
+  tidak ada tabel tertinggal.
+
+### Stalwart JMAP: unsupportedSort → sort client-side (Sprint 1.5a)
+- Gejala: `GET /api/widgets/mail/summary` → `unsupportedSort` dari Stalwart
+  saat query `Email/query` dengan sort `receivedAt`.
+- Sebab: Stalwart tidak support sort JMAP di field tsb (deploy ini).
+- Fix: fetch window 20 tanpa sort, lalu sort by `receivedAt` desc di kode.
+- Bonus gotcha: `methodResponses` adalah OBJECT envelope
+  `{"methodResponses":[[name,args,callId],...],"sessionState":"..."}` —
+  elemen DALAM array itu triple posisional `[name, args, callId]` (RFC 8620
+  §3.3), bukan object `{name, args}`. Struct Go harus
+  `struct{ MethodResponses [][]json.RawMessage }` lalu decode per-triple.
+
+### Odoo deployment base+mail → metrik widget ERP adaptif (Sprint 1.5a)
+- Sebab: deployment Odoo CloudSuite hanya install base+mail (+web/auth_oidc)
+  — tabel `account_move`, `stock_quant`, `project_task` TIDAK ADA.
+- Fix: metrik widget ERP = Kontak (`search_count` res_partner), Aktivitas
+  pesan 30 hari (`mail_message`), User aktif (`res_users`). Kalau nanti
+  install modul accounting/stock/project, metrik lama bisa diaktifkan lagi.
+
+### Widget env NC/Odoo harus ada di portal-backend (Sprint 1.5a)
+- Gejala: widget drive/erp balas 200 `{unavailable:true}` dengan error
+  "not configured".
+- Sebab: env `NEXTCLOUD_*`/`ODOO_*` belum ada di service `portal-backend`
+  (dulu hanya dibutuhkan worker).
+- Fix: tambahkan env di compose (Bagian 12g PANDUAN-DEPLOY), lalu
+  `docker compose up -d --build portal-backend` (rebuild, bukan restart —
+  env tidak kebaca dengan `restart` saja... dengan recreate biasa juga cukup,
+  tapi `--build` aman untuk kedua-duanya).

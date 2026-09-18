@@ -1,7 +1,7 @@
 # CloudSuite — Project State
 
 > Snapshot status project. Update setiap sprint selesai.
-> Terakhir update: 2026-09-17 (Sprint 1.4b — De-provisioning + UI Status).
+> Terakhir update: 2026-09-18 (Sprint 1.5a — Audit Log + Widget Stats).
 
 ## 1. Overview
 
@@ -37,6 +37,7 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - [x] 1.3 — DNS Wizard + Domain Onboarding (superadmin)
 - [x] 1.4a — Provisioning Inti (queue Redis + worker + connectors Stalwart/Nextcloud/Odoo-deferred, E2E live)
 - [x] 1.4b — De-provisioning + UI status/retry (guard anti re-create, destroy Stalwart via JMAP `x:Account/set`, E2E create→delete live)
+- [x] 1.5a — Audit Log (append-only, API list/export CSV, UI /admin/audit) + Widget Stats dashboard (Mail/Drive/ERP, Redis cache, soft-degrade; ERP metrik adaptif base+mail)
 
 ## 3. Keputusan yang Dikunci
 
@@ -79,7 +80,8 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 
 ## 6. Next Action
 
-- Sprint 1.5 — Audit + Polish + Mail Monitoring + Widget Stats
+- Sprint 1.5b — Auto-login + branding
+- Sprint 1.5c — Reset password + pre-create Odoo
 - Sprint 2.0 — Tenant admin UI (`/manage`, Phase 2)
 
 ## 7. Referensi
@@ -89,4 +91,4 @@ infra yang sama: postgres, redis, dan jaringan `cloudsuite-net`.
 - docs/authentik-setup.md — baseline Authentik
 - docs/nextcloud-notes.md — notes Nextcloud
 - docs/odoo-notes.md — notes Odoo
-- docs/portal-notes.md — notes Portal (termasuk Admin Console + Provisioning 1.4a + De-provisioning 1.4b)
+- docs/portal-notes.md — notes Portal (termasuk Admin Console + Provisioning 1.4a + De-provisioning 1.4b + Audit Log + Widget 1.5a)
