@@ -150,6 +150,89 @@ export type UpdateDomainModeRequest = {
   dkim_mode: DKIMMode
 }
 
+// --- Audit log (Sprint 1.5a) ---
+
+export type AuditEntry = {
+  id: number
+  actor_id: number | null
+  actor_email: string
+  actor_type: string
+  action: string
+  target_type: string | null
+  target_id: string | null
+  service_code: string | null
+  ip_address: string | null
+  user_agent: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export type AuditListResponse = {
+  total: number
+  page: number
+  limit: number
+  items: AuditEntry[]
+}
+
+export type AuditFilters = {
+  actor_id?: string
+  action?: string
+  service?: string
+  from?: string
+  to?: string
+  search?: string
+  page?: number
+  limit?: number
+}
+
+// --- Dashboard widgets (Sprint 1.5a) ---
+
+export type MailWidgetSummary = {
+  unread_count: number
+  recent: {
+    id: string
+    from: string
+    subject: string
+    received_at: string
+    is_read: boolean
+    deep_link: string
+  }[]
+  cached_at: string
+  provisioned: boolean
+  unavailable?: boolean
+  error?: string
+}
+
+export type DriveWidgetSummary = {
+  storage: {
+    used_bytes: number
+    total_bytes: number // -3 = unlimited
+    percent: number
+  }
+  recent: {
+    name: string
+    size: number
+    modified_at: string
+    mime: string
+    deep_link: string
+  }[]
+  cached_at: string
+  provisioned: boolean
+  unavailable?: boolean
+  error?: string
+}
+
+export type ErpWidgetSummary = {
+  metrics: {
+    key: string
+    label: string
+    value: number
+  }[]
+  cached_at: string
+  unavailable?: boolean
+  error?: string
+}
+
 const BASE = "/api/admin"
 
 async function request<T>(
@@ -293,4 +376,66 @@ export const adminApi = {
 
   listDNSRecords: (token: string, id: string) =>
     request<DNSRecord[]>(`/domains/${id}/records`, token),
+
+  // --- Audit log (Sprint 1.5a) ---
+
+  listAuditLogs: (token: string, filters: AuditFilters = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(filters)) {
+      if (v !== undefined && v !== "") qs.set(k, String(v))
+    }
+    const q = qs.toString()
+    return request<AuditListResponse>(`/audit${q ? `?${q}` : ""}`, token)
+  },
+
+  // CSV download needs the Bearer header, so it goes through fetch + blob
+  // instead of a plain <a href>.
+  exportAuditLogs: async (token: string, filters: AuditFilters = {}) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(filters)) {
+      if (v !== undefined && v !== "" && k !== "page" && k !== "limit")
+        qs.set(k, String(v))
+    }
+    const q = qs.toString()
+    const res = await fetch(`${BASE}/audit/export${q ? `?${q}` : ""}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
+}
+
+// Widget endpoints live under /api/widgets and degrade softly: the backend
+// answers 200 with { unavailable: true, error } instead of an error status.
+const WIDGET_BASE = "/api/widgets"
+
+async function widgetRequest<T>(path: string, token: string): Promise<T> {
+  const res = await fetch(`${WIDGET_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? `HTTP ${res.status}`)
+  }
+  return (await res.json()) as T
+}
+
+export const widgetApi = {
+  getMailWidget: (token: string) =>
+    widgetRequest<MailWidgetSummary>("/mail/summary", token),
+
+  getDriveWidget: (token: string) =>
+    widgetRequest<DriveWidgetSummary>("/drive/summary", token),
+
+  getErpWidget: (token: string) =>
+    widgetRequest<ErpWidgetSummary>("/erp/summary", token),
 }

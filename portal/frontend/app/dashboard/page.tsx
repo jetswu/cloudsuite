@@ -1,31 +1,12 @@
-import { BarChart3, Cloud, HardDrive, Mail } from "lucide-react";
+import { Cloud } from "lucide-react";
 import { auth, signOut } from "@/auth";
-import { ServiceCard } from "@/components/service-card";
+import { WidgetMail } from "@/components/dashboard/widget-mail";
+import { WidgetDrive } from "@/components/dashboard/widget-drive";
+import { WidgetErp } from "@/components/dashboard/widget-erp";
 import { UserMenu } from "@/components/user-menu";
 import { MeStatus } from "@/components/me-status";
 
 const SUPER_ADMIN_GROUP = "cloudsuite-superadmin";
-
-const services = [
-  {
-    icon: Mail,
-    name: "Mail",
-    description: "Webmail Stalwart untuk email organisasi Anda.",
-    href: "https://webmail.idchsuite.my.id",
-  },
-  {
-    icon: HardDrive,
-    name: "Drive",
-    description: "Penyimpanan file dan kolaborasi lewat Nextcloud.",
-    href: "https://drive.idchsuite.my.id",
-  },
-  {
-    icon: BarChart3,
-    name: "ERP",
-    description: "Kelola operasional dan keuangan lewat Odoo.",
-    href: "https://erp.idchsuite.my.id",
-  },
-];
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -96,10 +77,13 @@ export default async function DashboardPage() {
                 Layanan
               </h2>
             </div>
+            {/* Sprint 1.5a: data widgets (replaces the static service cards).
+                Each widget refreshes itself (5 min mail/drive, 15 min ERP)
+                and degrades independently when a service is unavailable. */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {services.map((s) => (
-                <ServiceCard key={s.name} {...s} />
-              ))}
+              <WidgetMail accessToken={session.accessToken} />
+              <WidgetDrive accessToken={session.accessToken} />
+              <WidgetErp accessToken={session.accessToken} />
             </div>
           </section>
         </div>
