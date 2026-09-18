@@ -40,6 +40,12 @@ type Config struct {
 	OdooDB        string
 	OdooLogin     string
 	OdooPassword  string
+
+	// Widget deep links (Sprint 1.5a): public bases used to build the
+	// "open in service" links of the dashboard widgets.
+	DriveURL   string
+	ErpURL     string
+	WebmailURL string
 }
 
 // Load reads config from environment with sane defaults.
@@ -73,6 +79,10 @@ func Load() (*Config, error) {
 		OdooDB:       getEnv("ODOO_DB", "odoo"),
 		OdooLogin:    getEnv("ODOO_LOGIN", "admin"),
 		OdooPassword: os.Getenv("ODOO_PASSWORD"),
+
+		DriveURL:   getEnv("WIDGET_DRIVE_URL", "https://drive.idchsuite.my.id"),
+		ErpURL:     getEnv("WIDGET_ERP_URL", "https://erp.idchsuite.my.id"),
+		WebmailURL: getEnv("WIDGET_WEBMAIL_URL", "https://webmail.idchsuite.my.id"),
 	}
 	if cfg.AuthentikIssuer == "" {
 		return nil, fmt.Errorf("AUTHENTIK_ISSUER is required")
