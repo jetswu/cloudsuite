@@ -15,12 +15,14 @@ import (
 // DomainHandler serves the /api/admin/domains endpoints for domain onboarding.
 // It depends on the DomainService orchestration layer.
 type DomainHandler struct {
-	svc *service.DomainService
+	svc   *service.DomainService
+	audit *service.AuditLogger // nil = audit disabled (1.5a)
 }
 
-// NewDomainHandler wires the domain handler to its service.
-func NewDomainHandler(svc *service.DomainService) *DomainHandler {
-	return &DomainHandler{svc: svc}
+// NewDomainHandler wires the domain handler to its service. audit may be nil,
+// which disables the audit trail.
+func NewDomainHandler(svc *service.DomainService, audit *service.AuditLogger) *DomainHandler {
+	return &DomainHandler{svc: svc, audit: audit}
 }
 
 // Routes mounts the domain endpoints under /api/admin/domains. requireAuth and
@@ -68,6 +70,13 @@ func (d *DomainHandler) createDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, detail)
+	if d.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "domain.create", "domain", detail.Domain.ID
+		e.ServiceCode = "mail"
+		e.Metadata = map[string]any{"name": detail.Domain.Name, "dkim_mode": string(req.DKIMMode)}
+		_ = d.audit.Log(r.Context(), e)
+	}
 }
 
 func (d *DomainHandler) getDomain(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +115,13 @@ func (d *DomainHandler) updateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
+	if d.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "domain.update_dkim", "domain", id
+		e.ServiceCode = "mail"
+		e.Metadata = map[string]any{"dkim_mode": string(req.DKIMMode)}
+		_ = d.audit.Log(r.Context(), e)
+	}
 }
 
 func (d *DomainHandler) deleteDomain(w http.ResponseWriter, r *http.Request) {
@@ -119,6 +135,11 @@ func (d *DomainHandler) deleteDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	if d.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "domain.delete", "domain", id
+		_ = d.audit.Log(r.Context(), e)
+	}
 }
 
 func (d *DomainHandler) verifyDomain(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +154,13 @@ func (d *DomainHandler) verifyDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
+	if d.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "domain.verify", "domain", id
+		e.ServiceCode = "mail"
+		e.Metadata = map[string]any{"status": string(detail.Domain.Status)}
+		_ = d.audit.Log(r.Context(), e)
+	}
 }
 
 func (d *DomainHandler) listRecords(w http.ResponseWriter, r *http.Request) {

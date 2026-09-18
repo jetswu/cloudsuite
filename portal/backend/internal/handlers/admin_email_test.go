@@ -19,8 +19,8 @@ type fakeRepo struct {
 }
 
 func (f *fakeRepo) ListUsers(ctx context.Context) ([]domain.User, error)   { return nil, nil }
-func (f *fakeRepo) ListGroups(ctx context.Context) ([]domain.Group, error)  { return nil, nil }
-func (f *fakeRepo) ListRoles(ctx context.Context) ([]domain.Role, error)    { return nil, nil }
+func (f *fakeRepo) ListGroups(ctx context.Context) ([]domain.Group, error) { return nil, nil }
+func (f *fakeRepo) ListRoles(ctx context.Context) ([]domain.Role, error)   { return nil, nil }
 func (f *fakeRepo) CreateUser(ctx context.Context, req domain.UserRequest) (domain.User, error) {
 	f.created = domain.User{PK: 99, Username: req.Username, Name: req.Name, Email: req.Email}
 	return f.created, nil
@@ -41,9 +41,9 @@ func (f *fakeRepo) UpdateGroup(ctx context.Context, uuid string, req domain.Grou
 func (f *fakeRepo) UpdateRole(ctx context.Context, uuid string, req domain.RoleRequest) (domain.Role, error) {
 	return domain.Role{}, nil
 }
-func (f *fakeRepo) DeleteUser(ctx context.Context, id int) error                  { return nil }
-func (f *fakeRepo) DeleteGroup(ctx context.Context, uuid string) error            { return nil }
-func (f *fakeRepo) DeleteRole(ctx context.Context, uuid string) error             { return nil }
+func (f *fakeRepo) DeleteUser(ctx context.Context, id int) error       { return nil }
+func (f *fakeRepo) DeleteGroup(ctx context.Context, uuid string) error { return nil }
+func (f *fakeRepo) DeleteRole(ctx context.Context, uuid string) error  { return nil }
 func (f *fakeRepo) SetUserGroups(ctx context.Context, id int, uuids []string) error {
 	return nil
 }
@@ -58,7 +58,7 @@ func (f *fakeRepo) RemoveGroupMember(ctx context.Context, uuid string, pk int) e
 // routeCreateUser mounts createUser on a chi router (no auth middleware; we test
 // the validation logic directly).
 func routeCreateUser(repo *fakeRepo) http.Handler {
-	a := NewAdminHandler(repo, nil)
+	a := NewAdminHandler(repo, nil, nil)
 	r := chi.NewRouter()
 	r.Post("/api/admin/users", a.createUser)
 	return r

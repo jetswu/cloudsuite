@@ -16,6 +16,7 @@ import (
 	"github.com/jetswu/cloudsuite/portal/backend/internal/domain"
 	"github.com/jetswu/cloudsuite/portal/backend/internal/provisioning"
 	"github.com/jetswu/cloudsuite/portal/backend/internal/repository/authentik"
+	"github.com/jetswu/cloudsuite/portal/backend/internal/service"
 )
 
 // emailRe is a deliberately simple email shape check: local@domain.tld. It
@@ -38,14 +39,42 @@ func validEmail(v string) bool {
 // AdminHandler serves the /api/admin CRUD endpoints for users, groups, roles.
 // It depends only on the authentik.Repository interface.
 type AdminHandler struct {
-	repo authentik.Repository
-	prov *provisioning.Service // nil = provisioning disabled (1.4a)
+	repo  authentik.Repository
+	prov  *provisioning.Service // nil = provisioning disabled (1.4a)
+	audit *service.AuditLogger  // nil = audit disabled (1.5a)
 }
 
 // NewAdminHandler wires the admin handler to its repository. prov may be nil,
-// which disables the provisioning side-effects.
-func NewAdminHandler(repo authentik.Repository, prov *provisioning.Service) *AdminHandler {
-	return &AdminHandler{repo: repo, prov: prov}
+// which disables the provisioning side-effects; audit may be nil, which
+// disables the audit trail.
+func NewAdminHandler(repo authentik.Repository, prov *provisioning.Service, audit *service.AuditLogger) *AdminHandler {
+	return &AdminHandler{repo: repo, prov: prov, audit: audit}
+}
+
+// auditEntryFor builds an AuditEntry from the request context: actor from the
+// verified claims, client IP from the reverse-proxy headers, raw UA. Target
+// fields are filled by the caller. Shared by all admin handlers (1.5a).
+func auditEntryFor(r *http.Request) service.AuditEntry {
+	e := service.AuditEntry{ActorType: "user", IPAddress: clientIP(r), UserAgent: r.UserAgent()}
+	if claims, ok := r.Context().Value(claimsKey).(*Claims); ok && claims != nil {
+		e.ActorEmail = claims.Email
+	}
+	return e
+}
+
+// clientIP prefers the reverse-proxy headers (nginx sets X-Forwarded-For /
+// X-Real-IP) and falls back to the TCP peer address.
+func clientIP(r *http.Request) string {
+	if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
+		if i := strings.IndexByte(xf, ','); i >= 0 {
+			xf = xf[:i]
+		}
+		return strings.TrimSpace(xf)
+	}
+	if xr := r.Header.Get("X-Real-IP"); xr != "" {
+		return strings.TrimSpace(xr)
+	}
+	return r.RemoteAddr
 }
 
 // RequireSuperAdmin guards routes that require membership in the super-admin
@@ -162,6 +191,16 @@ func (a *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sprint 1.5a: audit trail — user.create. Audit failures never fail the
+	// request (Log is best-effort by contract).
+	if a.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "user.create", "user", strconv.Itoa(user.PK)
+		e.ServiceCode = "authentik"
+		e.Metadata = map[string]any{"username": user.Username, "email": user.Email}
+		_ = a.audit.Log(r.Context(), e)
+	}
+
 	// Trigger provisioning (1.4a): enqueue stalwart/nextcloud/odoo jobs. A
 	// failure here must not fail the request — the jobs/state persist in the
 	// portal DB and the worker sweep re-enqueues lost messages.
@@ -175,8 +214,8 @@ func (a *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, domain.CreateUserResponse{
-		User:              user,
-		Password:          req.Password,
+		User:               user,
+		Password:           req.Password,
 		ProvisioningQueued: provisioningQueued,
 	})
 }
@@ -220,6 +259,13 @@ func (a *AdminHandler) updateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "update user", err)
 		return
 	}
+	if a.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "user.update", "user", strconv.Itoa(id)
+		e.ServiceCode = "authentik"
+		e.Metadata = map[string]any{"name": req.Name, "email": req.Email}
+		_ = a.audit.Log(r.Context(), e)
+	}
 	writeJSON(w, http.StatusOK, user)
 }
 
@@ -262,6 +308,12 @@ func (a *AdminHandler) deleteUser(w http.ResponseWriter, r *http.Request) {
 	if err := a.repo.DeleteUser(r.Context(), id); err != nil {
 		writeError(w, http.StatusBadGateway, "delete user", err)
 		return
+	}
+	if a.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "user.delete", "user", strconv.Itoa(id)
+		e.Metadata = map[string]any{"deprovision_queued": deprovisionQueued}
+		_ = a.audit.Log(r.Context(), e)
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{
 		"deleted":            true,
@@ -357,6 +409,12 @@ func (a *AdminHandler) retryProvision(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "nothing to retry (jobs already queued/running or no failed job)"})
 		return
 	}
+	if a.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "provisioning.retry", "user", strconv.Itoa(id)
+		e.Metadata = map[string]any{"service": svc, "jobs": queued}
+		_ = a.audit.Log(r.Context(), e)
+	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"queued":  queued,
 		"service": svc,
@@ -400,6 +458,12 @@ func (a *AdminHandler) setUserGroups(w http.ResponseWriter, r *http.Request) {
 	if err := a.repo.SetUserGroups(r.Context(), id, req.Groups); err != nil {
 		writeError(w, http.StatusBadGateway, "set user groups", err)
 		return
+	}
+	if a.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "user.set_groups", "user", strconv.Itoa(id)
+		e.Metadata = map[string]any{"groups": req.Groups}
+		_ = a.audit.Log(r.Context(), e)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -472,6 +536,12 @@ func (a *AdminHandler) createGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "create group", err)
 		return
 	}
+	if a.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "group.create", "group", group.PK
+		e.Metadata = map[string]any{"name": group.Name}
+		_ = a.audit.Log(r.Context(), e)
+	}
 	writeJSON(w, http.StatusCreated, group)
 }
 
@@ -486,6 +556,12 @@ func (a *AdminHandler) updateGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "update group", err)
 		return
 	}
+	if a.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "group.update", "group", uuid
+		e.Metadata = map[string]any{"name": req.Name}
+		_ = a.audit.Log(r.Context(), e)
+	}
 	writeJSON(w, http.StatusOK, group)
 }
 
@@ -494,6 +570,11 @@ func (a *AdminHandler) deleteGroup(w http.ResponseWriter, r *http.Request) {
 	if err := a.repo.DeleteGroup(r.Context(), uuid); err != nil {
 		writeError(w, http.StatusBadGateway, "delete group", err)
 		return
+	}
+	if a.audit != nil {
+		e := auditEntryFor(r)
+		e.Action, e.TargetType, e.TargetID = "group.delete", "group", uuid
+		_ = a.audit.Log(r.Context(), e)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
