@@ -1,6 +1,6 @@
 # binaries
-server
-server.exe
+/server
+/server.exe
 
 # env (jangan commit)
 .env
