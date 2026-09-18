@@ -297,6 +297,17 @@ services:
       PORTAL_DB_NAME: ${PORTAL_DB_NAME}
       PORTAL_DB_USER: ${PORTAL_DB_USER}
       PORTAL_DB_PASSWORD: ${PORTAL_DB_PASSWORD}
+      # Sprint 1.5a widgets (drive/erp summaries). NEXTCLOUD_BASE_URL wajib
+      # host canonical https://drive.idchsuite.my.id (gotcha: base internal
+      # http://nextcloud di-redirect ke HTML, parsing OCS gagal).
+      NEXTCLOUD_BASE_URL: https://drive.idchsuite.my.id
+      NEXTCLOUD_DB_NAME: ${NEXTCLOUD_DB_NAME}
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      ODOO_BASE_URL: http://odoo:8069
+      ODOO_DB: ${ODOO_DB_NAME}
+      ODOO_LOGIN: admin
+      ODOO_PASSWORD: ${ODOO_ADMIN_PASSWORD}
     networks:
       - cloudsuite-net
     expose:
